@@ -12,7 +12,7 @@ import Maintenance from './pages/Maintenance';
 import TrackOrder from './pages/TrackOrder';
 import UserDashboard from './pages/UserDashboard';
 import { Product, CartItem, Order, AppSettings, Customer } from './types';
-import { products as initialProducts } from './data';
+import { supabase } from './supabaseClient';
 
 function AppContent() {
   const [products, setProducts] = React.useState<Product[]>([]);
@@ -29,7 +29,7 @@ function AppContent() {
     const savedCart = localStorage.getItem('cartItems');
     return savedCart ? JSON.parse(savedCart) : [];
   });
-  
+
   const [isCartOpen, setIsCartOpen] = React.useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -58,12 +58,20 @@ function AppContent() {
   // Fetch customer data when user logs in
   React.useEffect(() => {
     if (currentUser) {
-      fetch(`/api/customers/email/${currentUser.email}`)
-        .then(res => res.ok ? res.json() : null)
-        .then(customer => {
-          if (customer) setCustomerData(customer);
+      supabase
+        .from('customers')
+        .select('*')
+        .ilike('email', currentUser.email)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) setCustomerData({
+            id: data.id, name: data.name, email: data.email,
+            phone: data.phone, address: data.address || '',
+            joinDate: data.join_date, totalSpent: Number(data.total_spent || 0),
+            orderCount: Number(data.order_count || 0), loyaltyPoints: Number(data.loyalty_points || 0)
+          });
         })
-        .catch(() => {});
+        .catch(() => { });
     } else {
       setCustomerData(null);
     }
@@ -74,19 +82,45 @@ function AppContent() {
     localStorage.setItem('cartItems', JSON.stringify(cartItems));
   }, [cartItems]);
 
-  // Fetch initial data
+  // Fetch initial data from Supabase
   React.useEffect(() => {
     const fetchData = async () => {
       try {
         const [productsRes, ordersRes, settingsRes] = await Promise.all([
-          fetch('/api/products'),
-          fetch('/api/orders'),
-          fetch('/api/settings')
+          supabase.from('products').select('*').order('name'),
+          supabase.from('orders').select('*').order('date', { ascending: false }),
+          supabase.from('settings').select('*').limit(1).maybeSingle()
         ]);
 
-        if (productsRes.ok) setProducts(await productsRes.json());
-        if (ordersRes.ok) setOrders(await ordersRes.json());
-        if (settingsRes.ok) setSettings(await settingsRes.json());
+        if (productsRes.data) {
+          setProducts(productsRes.data.map((p: any) => ({
+            ...p,
+            minStockLevel: p.min_stock_level,
+            tags: Array.isArray(p.tags) ? p.tags : (p.tags ? JSON.parse(p.tags) : [])
+          })));
+        }
+        if (ordersRes.data) {
+          setOrders(ordersRes.data.map((o: any) => ({
+            id: o.id, customerId: o.customer_id, customerName: o.customer_name,
+            customerPhone: o.customer_phone, customerEmail: o.customer_email,
+            items: Array.isArray(o.items) ? o.items : JSON.parse(o.items),
+            total: Number(o.total), discountAmount: Number(o.discount_amount || 0),
+            finalTotal: Number(o.final_total), status: o.status,
+            paymentMethod: o.payment_method, shippingAddress: o.shipping_address,
+            notes: o.notes, date: o.date
+          })));
+        }
+        if (settingsRes.data) {
+          const s = settingsRes.data;
+          setSettings({
+            paypackApiKey: s.paypack_api_key || '',
+            paypackApiSecret: s.paypack_api_secret || '',
+            storeName: s.store_name || 'Vintner & Spirit',
+            isMaintenanceMode: Boolean(s.is_maintenance_mode),
+            emailNotifications: Boolean(s.email_notifications),
+            adminPassword: s.admin_password || 'admin123'
+          });
+        }
       } catch (error) {
         console.error('Failed to fetch data:', error);
       } finally {
@@ -101,7 +135,7 @@ function AppContent() {
     setCartItems(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
-        return prev.map(item => 
+        return prev.map(item =>
           item.id === product.id ? { ...item, quantity: Math.min(item.quantity + 1, item.stock) } : item
         );
       }
@@ -137,19 +171,31 @@ function AppContent() {
     };
 
     try {
-      const response = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newOrder)
+      const { error } = await supabase.from('orders').insert({
+        id: newOrder.id,
+        customer_id: newOrder.customerId || null,
+        customer_name: newOrder.customerName,
+        customer_phone: newOrder.customerPhone,
+        customer_email: newOrder.customerEmail,
+        items: JSON.stringify(newOrder.items),
+        total: newOrder.total,
+        discount_amount: newOrder.discountAmount || 0,
+        final_total: newOrder.finalTotal,
+        status: newOrder.status,
+        payment_method: newOrder.paymentMethod,
+        shipping_address: newOrder.shippingAddress || null,
+        notes: newOrder.notes || null,
+        date: newOrder.date
       });
 
-      if (response.ok) {
+      if (!error) {
         setOrders(prev => [newOrder, ...prev]);
         handleClearCart();
-        
         if (settings.emailNotifications && orderData.customerEmail) {
           console.log('📧 Sending order confirmation email to:', orderData.customerEmail);
         }
+      } else {
+        console.error('Failed to create order:', error.message);
       }
     } catch (error) {
       console.error('Failed to create order:', error);
@@ -158,15 +204,16 @@ function AppContent() {
 
   const handleUpdateSettings = async (newSettings: AppSettings) => {
     try {
-      const response = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSettings)
-      });
+      const { error } = await supabase.from('settings').update({
+        paypack_api_key: newSettings.paypackApiKey || '',
+        paypack_api_secret: newSettings.paypackApiSecret || '',
+        store_name: newSettings.storeName || 'Vintner & Spirit',
+        is_maintenance_mode: newSettings.isMaintenanceMode,
+        email_notifications: newSettings.emailNotifications,
+        admin_password: newSettings.adminPassword || 'admin123'
+      }).eq('id', 1);
 
-      if (response.ok) {
-        setSettings(newSettings);
-      }
+      if (!error) setSettings(newSettings);
     } catch (error) {
       console.error('Failed to update settings:', error);
     }
@@ -174,21 +221,36 @@ function AppContent() {
 
   const handleSaveProduct = async (product: Product, isNew: boolean) => {
     try {
-      const url = isNew ? '/api/products' : `/api/products/${product.id}`;
-      const method = isNew ? 'POST' : 'PUT';
-      
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(product)
-      });
+      const dbProduct = {
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        price: product.price,
+        category: product.category,
+        image: product.image,
+        origin: product.origin,
+        abv: product.abv,
+        year: product.year || null,
+        stock: product.stock,
+        min_stock_level: product.minStockLevel || 0,
+        tags: product.tags || []
+      };
 
-      if (response.ok) {
+      let error;
+      if (isNew) {
+        ({ error } = await supabase.from('products').insert(dbProduct));
+      } else {
+        ({ error } = await supabase.from('products').update(dbProduct).eq('id', product.id));
+      }
+
+      if (!error) {
         if (isNew) {
           setProducts(prev => [...prev, product]);
         } else {
           setProducts(prev => prev.map(p => p.id === product.id ? product : p));
         }
+      } else {
+        console.error('Failed to save product:', error.message);
       }
     } catch (error) {
       console.error('Failed to save product:', error);
@@ -197,11 +259,8 @@ function AppContent() {
 
   const handleDeleteProduct = async (id: string) => {
     try {
-      const response = await fetch(`/api/products/${id}`, {
-        method: 'DELETE'
-      });
-
-      if (response.ok) {
+      const { error } = await supabase.from('products').delete().eq('id', id);
+      if (!error) {
         setProducts(prev => prev.filter(p => p.id !== id));
       }
     } catch (error) {
@@ -241,17 +300,17 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-dark">
       {showNavbar && (
-        <Navbar 
-          cartCount={cartItems.reduce((sum, item) => sum + item.quantity, 0)} 
+        <Navbar
+          cartCount={cartItems.reduce((sum, item) => sum + item.quantity, 0)}
           onCartClick={() => setIsCartOpen(true)}
           currentUser={currentUser}
           onAuthClick={() => setIsAuthModalOpen(true)}
         />
       )}
 
-      <Cart 
-        isOpen={isCartOpen} 
-        onClose={() => setIsCartOpen(false)} 
+      <Cart
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
         items={cartItems}
         onUpdateQuantity={handleUpdateQuantity}
         onRemove={handleRemoveFromCart}
@@ -270,12 +329,12 @@ function AppContent() {
           <Route path="/liquor" element={<StoreEnhanced products={products} onAddToCart={handleAddToCart} />} />
           <Route path="/checkout" element={<Checkout items={cartItems} onClearCart={handleClearCart} onCreateOrder={handleCreateOrder} currentUser={currentUser} />} />
           <Route path="/track-order" element={<TrackOrder orders={orders} />} />
-          <Route 
-            path="/dashboard" 
+          <Route
+            path="/dashboard"
             element={
               currentUser ? (
-                <UserDashboard 
-                  user={currentUser} 
+                <UserDashboard
+                  user={currentUser}
                   onLogout={handleUserLogout}
                   orders={orders}
                   customer={customerData}
@@ -283,12 +342,12 @@ function AppContent() {
               ) : (
                 <StoreEnhanced products={products} onAddToCart={handleAddToCart} />
               )
-            } 
+            }
           />
-          <Route 
-            path="/admin" 
+          <Route
+            path="/admin"
             element={
-              <Admin 
+              <Admin
                 isAuthenticated={isAdminAuthenticated}
                 onLogin={() => setIsAdminAuthenticated(true)}
                 products={products}
@@ -298,7 +357,7 @@ function AppContent() {
                 settings={settings}
                 onUpdateSettings={handleUpdateSettings}
               />
-            } 
+            }
           />
         </Routes>
       </AnimatePresence>
