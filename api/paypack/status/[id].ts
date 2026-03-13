@@ -38,11 +38,14 @@ export default async function handler(req: any, res: any) {
             .limit(1)
             .maybeSingle();
 
-        if (!settingsData) {
-            return res.status(500).json({ error: 'Settings not found' });
+        const apiKey = settingsData?.paypack_api_key || process.env.PAYPACK_API_KEY;
+        const apiSecret = settingsData?.paypack_api_secret || process.env.PAYPACK_API_SECRET;
+
+        if (!apiKey) {
+            return res.status(500).json({ error: 'PayPack configuration missing' });
         }
 
-        const auth = Buffer.from(`${settingsData.paypack_api_key}:${settingsData.paypack_api_secret}`).toString('base64');
+        const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
         const response = await fetch(`https://api.paypack.co.rw/v1/transactions/${id}/status`, {
             method: 'GET',

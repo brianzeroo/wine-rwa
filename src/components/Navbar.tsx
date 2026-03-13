@@ -34,8 +34,8 @@ export default function Navbar({ cartCount, onCartClick, currentUser, onAuthClic
         <div className="flex justify-between items-center h-20">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2">
-            <span className="text-2xl font-serif font-bold tracking-tighter text-gold">V&S</span>
-            <span className="hidden sm:block text-sm uppercase tracking-[0.3em] font-light text-white/70">Vintner & Spirit</span>
+            <span className="text-2xl font-serif font-bold tracking-tighter text-gold">W.R</span>
+            <span className="hidden sm:block text-sm uppercase tracking-[0.3em] font-light text-white/70">Wine RWA</span>
           </Link>
 
           {/* Desktop Navigation */}

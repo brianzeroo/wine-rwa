@@ -16,11 +16,11 @@ export default function Maintenance() {
             <Hammer size={40} className="text-gold absolute -bottom-2 -right-2 animate-bounce" />
           </div>
         </div>
-        
+
         <div className="space-y-4">
           <h1 className="text-4xl font-serif text-white">Refining the Cellar</h1>
           <p className="text-white/40 leading-relaxed">
-            Vintner & Spirit is currently undergoing scheduled maintenance to improve your shopping experience. We'll be back with our finest selection shortly.
+            Wine RWA is currently undergoing scheduled maintenance to improve your shopping experience. We'll be back with our finest selection shortly.
           </p>
         </div>
 

@@ -25,7 +25,7 @@ function AppContent() {
   const [settings, setSettings] = React.useState<AppSettings>({
     paypackApiKey: 'ID7ef50f2e-1659-11f1-aa4f-deadd43720af',
     paypackApiSecret: '340cf2aac9c7239b3eb96b8783a67206da39a3ee5e6b4b0d3255bfef95601890afd80709',
-    storeName: 'Vintner & Spirit',
+    storeName: 'Wine RWA',
     isMaintenanceMode: false,
     emailNotifications: true,
   });
@@ -300,7 +300,7 @@ function AppContent() {
       {showNavbar && (
         <footer className="py-12 border-t border-white/5 bg-surface">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-4">
-            <p className="text-gold font-serif text-xl tracking-tighter">Vintner & Spirit</p>
+            <p className="text-gold font-serif text-xl tracking-tighter">Wine RWA</p>
             <p className="text-white/20 text-[10px] uppercase tracking-[0.4em]">
               Excellence in every pour • Since 2024
             </p>

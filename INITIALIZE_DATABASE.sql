@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS settings (
 -- ==========================================
 
 INSERT INTO settings (id, store_name, admin_password, is_maintenance_mode, email_notifications)
-VALUES (1, 'Vintner & Spirit', 'admin123', FALSE, TRUE)
+VALUES (1, 'Wine RWA', 'admin123', FALSE, TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO products (id, name, description, price, category, image, origin, abv, year, stock, min_stock_level, tags)
