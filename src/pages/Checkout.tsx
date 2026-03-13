@@ -4,6 +4,8 @@ import { CartItem, Order } from '../types';
 import { ChevronLeft, Smartphone, CreditCard, ShieldCheck } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import DiscountCode from '../components/DiscountCode';
+import { getDiscountCodeByCode, incrementDiscountCodeUsage } from '../api/discountCodes';
+import { getCustomerByEmail, createCustomer, updateCustomer, addCustomerLoyaltyPoints } from '../api/customers';
 
 interface CheckoutProps {
   items: CartItem[];
@@ -45,10 +47,8 @@ export default function Checkout({ items, onClearCart, onCreateOrder, currentUse
 
   const handleApplyDiscount = async (code: string) => {
     try {
-      const response = await fetch(`/api/discounts/${code}`);
-      if (response.ok) {
-        const discountData = await response.json();
-
+      const discountData = await getDiscountCodeByCode(code);
+      if (discountData) {
         // Validation
         const minAmount = Number(discountData.minOrderAmount) || 0;
         if (minAmount > 0 && subtotal < minAmount) {
@@ -72,7 +72,7 @@ export default function Checkout({ items, onClearCart, onCreateOrder, currentUse
           alert('This discount code has expired');
           return;
         }
-        if (discountData.usageLimit > 0 && discountData.usedCount >= discountData.usageLimit) {
+        if (discountData.usageLimit > 0 && (discountData.usedCount || 0) >= discountData.usageLimit) {
           alert('This discount code has reached its usage limit');
           return;
         }
@@ -89,8 +89,7 @@ export default function Checkout({ items, onClearCart, onCreateOrder, currentUse
         setAppliedDiscountCode(code);
         setDiscountId(discountData.id);
       } else {
-        const errorData = await response.json();
-        alert(errorData.error || 'Invalid discount code');
+        alert('Invalid discount code');
       }
     } catch (err) {
       console.error('Error applying discount code', err);
@@ -111,45 +110,32 @@ export default function Checkout({ items, onClearCart, onCreateOrder, currentUse
 
     // Create or Update customer
     try {
-      let customerResponse = await fetch(`/api/customers/phone/${phoneNumber}`);
+      let customer = await getCustomerByEmail(customerEmail);
       let customerId = null;
 
-      if (customerResponse.ok) {
-        const existingCustomer = await customerResponse.json();
-        customerId = existingCustomer.id;
-
+      if (customer) {
+        customerId = customer.id;
         // Update customer details with what's in the form
-        await fetch(`/api/customers/${customerId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: customerName,
-            email: customerEmail,
-            address: shippingAddress
-          })
+        await updateCustomer(customerId, {
+          name: customerName,
+          address: shippingAddress,
+          phone: phoneNumber
         });
       } else {
         // Create new customer
-        const newCustomerData = {
+        const newCustomer = await createCustomer({
           name: customerName,
           email: customerEmail,
           phone: phoneNumber,
-          address: shippingAddress
-        };
-
-        const createResponse = await fetch('/api/customers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newCustomerData)
+          address: shippingAddress,
+          loyaltyPoints: 0
         });
-
-        if (createResponse.ok) {
-          const newCustomer = await createResponse.json();
-          customerId = newCustomer.id;
-        }
+        customerId = newCustomer.id;
       }
 
-      // Initialize PayPack payment
+      // NOTE: In a production Netlify environment, these should be moved to Netlify Functions
+      // to keep API keys secure and avoid CORS/routing issues.
+      // For now, we keep them as is, but they will likely fail without a proxy or functions.
       const paypackResponse = await fetch('/api/paypack/authorize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -195,10 +181,7 @@ export default function Checkout({ items, onClearCart, onCreateOrder, currentUse
 
       // Increment usage count ONLY after successful payment
       if (discountId) {
-        await fetch(`/api/discounts/${discountId}/increment-usage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        });
+        await incrementDiscountCodeUsage(discountId);
       }
 
       // Create the order with discount information
@@ -219,11 +202,7 @@ export default function Checkout({ items, onClearCart, onCreateOrder, currentUse
       // Add loyalty points if customer exists
       if (customerId) {
         const pointsToAdd = Math.floor(finalTotal / 1000); // 1 point per 1000 RWF spent
-        await fetch(`/api/customers/${customerId}/add-points`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ points: pointsToAdd })
-        });
+        await addCustomerLoyaltyPoints(customerId, pointsToAdd);
       }
 
       alert('Payment successful! Your order is being prepared.');

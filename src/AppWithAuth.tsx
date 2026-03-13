@@ -63,15 +63,18 @@ function AppContent() {
         .select('*')
         .ilike('email', currentUser.email)
         .maybeSingle()
-        .then(({ data }) => {
+        .then(({ data, error }) => {
+          if (error) {
+            console.error('Error fetching customer:', error.message);
+            return;
+          }
           if (data) setCustomerData({
             id: data.id, name: data.name, email: data.email,
             phone: data.phone, address: data.address || '',
             joinDate: data.join_date, totalSpent: Number(data.total_spent || 0),
             orderCount: Number(data.order_count || 0), loyaltyPoints: Number(data.loyalty_points || 0)
           });
-        })
-        .catch(() => { });
+        });
     } else {
       setCustomerData(null);
     }
@@ -268,7 +271,7 @@ function AppContent() {
     }
   };
 
-  const handleUserLogin = (user: { id: string; email: string; name: string }) => {
+  const handleUserLogin = (user: any) => {
     setCurrentUser(user);
   };
 

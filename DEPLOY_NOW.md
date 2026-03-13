@@ -33,7 +33,7 @@
 
 #### Option A: One-Click Deploy ⚡ Fastest
 
-**Click this link**: https://vercel.com/new/clone?repository-url=https://github.com/brianthe1st/vintner-spirit
+**Click this link**: https://vercel.com/new/clone?repository-url=https://github.com/brianthe1st/vintner-spirit1
 
 This will:
 1. Import your repository automatically

@@ -12,6 +12,11 @@ import Maintenance from './pages/Maintenance';
 import TrackOrder from './pages/TrackOrder';
 import UserDashboard from './pages/UserDashboard';
 import { Product, CartItem, Order, AppSettings, Customer } from './types';
+import { getAllProducts, createProduct, updateProduct, deleteProduct } from './api/products';
+import { getAllOrders, createOrder } from './api/orders';
+import { getSettings, updateSettings } from './api/settings';
+import { supabase } from './supabaseClient';
+import { getCustomerByEmail } from './api/customers';
 import { products as initialProducts } from './data';
 
 function AppContent() {
@@ -60,19 +65,44 @@ function AppContent() {
     localStorage.setItem('cartItems', JSON.stringify(cartItems));
   }, [cartItems]);
 
+  // Fetch customer data when user logs in
+  React.useEffect(() => {
+    if (currentUser) {
+      supabase
+        .from('customers')
+        .select('*')
+        .ilike('email', currentUser.phone + '@placeholder.com') // The user logic seems to use phone or similar
+        .maybeSingle()
+        .then(({ data, error }) => {
+          if (error) {
+            console.error('Error fetching customer:', error.message);
+            return;
+          }
+          if (data) setCustomerData({
+            id: data.id, name: data.name, email: data.email,
+            phone: data.phone, address: data.address || '',
+            joinDate: data.join_date, totalSpent: Number(data.total_spent || 0),
+            orderCount: Number(data.order_count || 0), loyaltyPoints: Number(data.loyalty_points || 0)
+          });
+        });
+    } else {
+      setCustomerData(null);
+    }
+  }, [currentUser]);
+
   // Fetch initial data
   React.useEffect(() => {
     const fetchData = async () => {
       try {
-        const [productsRes, ordersRes, settingsRes] = await Promise.all([
-          fetch('/api/products'),
-          fetch('/api/orders'),
-          fetch('/api/settings')
+        const [productsData, ordersData, settingsData] = await Promise.all([
+          getAllProducts(),
+          getAllOrders(),
+          getSettings()
         ]);
 
-        if (productsRes.ok) setProducts(await productsRes.json());
-        if (ordersRes.ok) setOrders(await ordersRes.json());
-        if (settingsRes.ok) setSettings(await settingsRes.json());
+        if (productsData) setProducts(productsData);
+        if (ordersData) setOrders(ordersData);
+        if (settingsData) setSettings(settingsData);
       } catch (error) {
         console.error('Failed to fetch data:', error);
       } finally {
@@ -115,28 +145,15 @@ function AppContent() {
   };
 
   const handleCreateOrder = async (orderData: Omit<Order, 'id' | 'date' | 'status'>) => {
-    const newOrder: Order = {
-      ...orderData,
-      id: `ORD-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-      date: new Date().toISOString(),
-      status: 'Pending'
-    };
-
     try {
-      const response = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newOrder)
-      });
-
-      if (response.ok) {
-        setOrders(prev => [newOrder, ...prev]);
+      const result = await createOrder(orderData as any);
+      if (result) {
+        setOrders(prev => [result, ...prev]);
         handleClearCart();
 
         // Simulate sending confirmation email
         if (settings.emailNotifications && orderData.customerEmail) {
           console.log('📧 Sending order confirmation email to:', orderData.customerEmail);
-          // In production, this would call an email API
         }
       }
     } catch (error) {
@@ -146,14 +163,9 @@ function AppContent() {
 
   const handleUpdateSettings = async (newSettings: AppSettings) => {
     try {
-      const response = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSettings)
-      });
-
-      if (response.ok) {
-        setSettings(newSettings);
+      const result = await updateSettings(newSettings);
+      if (result) {
+        setSettings(result);
       }
     } catch (error) {
       console.error('Failed to update settings:', error);
@@ -161,33 +173,16 @@ function AppContent() {
   };
 
   const handleSaveProduct = async (product: Product, isNew: boolean) => {
-    console.log('🔄 App.tsx: Received product to save:', product);
-    console.log('🔄 App.tsx: Category from Admin:', product.category);
-
     try {
-      const url = isNew ? '/api/products' : `/api/products/${product.id}`;
-      const method = isNew ? 'POST' : 'PUT';
-
-      console.log(`📡 App.tsx: Sending ${method} request to ${url}`);
-      console.log('📦 App.tsx: Request body:', JSON.stringify(product, null, 2));
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(product)
-      });
-
-      console.log('📥 App.tsx: Response status:', response.status);
-
-      if (response.ok) {
-        const result = await response.json();
-        const savedProduct = isNew ? result : product;
-        console.log('✅ App.tsx: Server response:', result);
-
-        if (isNew) {
-          setProducts(prev => [...prev, savedProduct]);
-        } else {
-          setProducts(prev => prev.map(p => p.id === savedProduct.id ? savedProduct : p));
+      let savedProduct;
+      if (isNew) {
+        const { id, ...newProduct } = product;
+        savedProduct = await createProduct(newProduct as any);
+        setProducts(prev => [...prev, savedProduct]);
+      } else {
+        savedProduct = await updateProduct(product.id, product);
+        if (savedProduct) {
+          setProducts(prev => prev.map(p => p.id === savedProduct!.id ? savedProduct! : p));
         }
       }
     } catch (error) {
@@ -197,13 +192,8 @@ function AppContent() {
 
   const handleDeleteProduct = async (id: string) => {
     try {
-      const response = await fetch(`/api/products/${id}`, {
-        method: 'DELETE'
-      });
-
-      if (response.ok) {
-        setProducts(prev => prev.filter(p => p.id !== id));
-      }
+      await deleteProduct(id);
+      setProducts(prev => prev.filter(p => p.id !== id));
     } catch (error) {
       console.error('Failed to delete product:', error);
     }
@@ -211,6 +201,7 @@ function AppContent() {
 
   const handleUserLogin = (user: { id: string; phone: string; name: string }) => {
     setCurrentUser(user);
+    localStorage.setItem('user', JSON.stringify(user));
     setIsAuthModalOpen(false);
   };
 

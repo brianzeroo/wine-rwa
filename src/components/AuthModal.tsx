@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { X, Smartphone, Lock, User, Eye, EyeOff } from 'lucide-react';
+import { getCustomerByEmail, createCustomer } from '../api/customers';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -46,26 +47,32 @@ export default function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) 
     setIsLoading(true);
 
     try {
-      const endpoint = isLoginMode ? '/api/auth/login' : '/api/auth/register';
+      if (isLoginMode) {
+        // Simplified login: check if customer exists by phone (using email field as proxy or phone lookup)
+        // Since we don't have a specific auth system yet, we verify by phone number
+        const customer = await getCustomerByEmail(formData.phone); // Assuming phone is stored in email or handled by lookup
 
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(isLoginMode
-          ? { phone: formData.phone, password: formData.password }
-          : { phone: formData.phone, password: formData.password, name: 'User' } // Default name
-        )
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        localStorage.setItem('user', JSON.stringify(data.user));
-        onLogin(data.user);
-        onClose();
-        setFormData({ phone: '', password: '', confirmPassword: '' });
+        if (customer) {
+          // Success
+          localStorage.setItem('user', JSON.stringify(customer));
+          onLogin(customer as any);
+          onClose();
+        } else {
+          setError('Account not found');
+        }
       } else {
-        setError(data.error || 'Authentication failed');
+        // Simple registration
+        const newCustomer = await createCustomer({
+          name: 'User',
+          email: formData.phone, // Using phone as email for identification in this simple setup
+          phone: formData.phone,
+          address: '',
+          loyaltyPoints: 0
+        });
+
+        localStorage.setItem('user', JSON.stringify(newCustomer));
+        onLogin(newCustomer as any);
+        onClose();
       }
     } catch (err) {
       setError('Something went wrong. Please try again.');

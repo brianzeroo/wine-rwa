@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
+import { getDiscountCodeByCode } from '../api/discountCodes';
 
 interface DiscountCodeProps {
   onApply: (code: string) => void;
@@ -23,9 +24,8 @@ export default function DiscountCode({ onApply, onRemove, appliedCode, discountA
     }
 
     try {
-      const response = await fetch(`/api/discounts/${code}`);
-      if (response.ok) {
-        const discountData = await response.json();
+      const discountData = await getDiscountCodeByCode(code);
+      if (discountData) {
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
         const startDate = new Date(discountData.startDate);

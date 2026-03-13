@@ -18,6 +18,8 @@ import {
 import { getAllDiscountCodes, createDiscountCode, deleteDiscountCode } from '../api/discountCodes';
 import { getAllCustomers } from '../api/customers';
 import { getAnalyticsData } from '../api/analytics';
+import { verifyAdminPassword } from '../api/settings';
+import { createProduct, updateProductInventory } from '../api/products';
 
 interface AdminProps {
   isAuthenticated: boolean;
@@ -104,18 +106,13 @@ export default function Admin({
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch('/api/admin/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: loginPassword })
-      });
+      const isValid = await verifyAdminPassword(loginPassword);
 
-      if (response.ok) {
+      if (isValid) {
         onLogin();
         setShowLoginModal(false);
       } else {
-        const data = await response.json();
-        alert(data.error || 'Incorrect password');
+        alert('Incorrect password');
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -177,19 +174,20 @@ export default function Admin({
         const content = event.target?.result as string;
         const productsData = JSON.parse(content);
 
-        // Send bulk upload request
-        const response = await fetch('/api/products/bulk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(productsData)
-        });
-
-        if (response.ok) {
-          alert(`${productsData.length} products uploaded successfully`);
-          window.location.reload(); // Refresh to get updated data
-        } else {
-          alert('Failed to upload products');
+        // Send bulk upload by iterating (client-side)
+        let successCount = 0;
+        for (const prod of productsData) {
+          try {
+            const { id, ...newProd } = prod;
+            await createProduct(newProd);
+            successCount++;
+          } catch (err) {
+            console.error('Failed to upload product:', prod.name, err);
+          }
         }
+
+        alert(`${successCount} products uploaded successfully`);
+        window.location.reload(); // Refresh to get updated data
       } catch (error) {
         console.error('Error uploading products:', error);
         alert('Error parsing file');
@@ -846,11 +844,8 @@ export default function Admin({
                               onSaveProduct(updatedProduct, false);
 
                               // Update stock via API
-                              fetch(`/api/products/${product.id}/inventory`, {
-                                method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ stock: parseInt(newStock) })
-                              });
+                              updateProductInventory(product.id, parseInt(newStock))
+                                .catch(err => console.error('Failed to update inventory:', err));
                             }
                           }}
                           className="px-3 py-1 bg-white/10 text-white rounded text-sm hover:bg-white/20 transition-colors"
@@ -1007,8 +1002,7 @@ export default function Admin({
                         }
 
                         try {
-                          const updatedSettings = { ...settings, adminPassword: newPassword };
-                          await onUpdateSettings(updatedSettings);
+                          await onUpdateSettings({ ...settings, adminPassword: newPassword });
                           alert('Admin password updated successfully!');
                           setNewPassword('');
                           setConfirmPassword('');
