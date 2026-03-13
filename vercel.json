@@ -13,11 +13,5 @@
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
-  ],
-  "env": {
-    "VITE_SUPABASE_URL": "@vite_supabase_url",
-    "VITE_SUPABASE_ANON_KEY": "@vite_supabase_anon_key",
-    "PAYPACK_API_KEY": "@paypack_api_key",
-    "PAYPACK_API_SECRET": "@paypack_api_secret"
-  }
+  ]
 }
