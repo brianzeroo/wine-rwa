@@ -10,14 +10,20 @@ export default async function handler(req: any, res: any) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    // Handle both /api/paypack/status?id=... and potentially path params if configured in vercel.json
-    // But the app calls it as /api/paypack/status/${id}
-    // Vercel handles /api/paypack/status/[id].ts as a dynamic route.
-    // We'll name this file [id].ts instead of status.ts if we want to match the URL exactly.
-    // Or we change the URL in Checkout.tsx to use a query param.
-    // Let's use the dynamic route approach.
-
     const { id } = req.query;
+
+    // Re-initialize or verify client inside handler to ensure fresh environment access
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+    const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+        return res.status(500).json({
+            success: false,
+            error: 'Missing Supabase environment variables in Vercel settings.'
+        });
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
     try {
         if (!id) {
@@ -32,14 +38,18 @@ export default async function handler(req: any, res: any) {
             });
         }
 
-        const { data: settingsData } = await supabase
+        const { data: settingsData, error: dbError } = await supabase
             .from('settings')
             .select('*')
             .limit(1)
             .maybeSingle();
 
-        const apiKey = settingsData?.paypack_api_key || process.env.PAYPACK_API_KEY;
-        const apiSecret = settingsData?.paypack_api_secret || process.env.PAYPACK_API_SECRET;
+        if (dbError) {
+            throw new Error(`Supabase Database Error: ${dbError.message}`);
+        }
+
+        const apiKey = (settingsData?.paypack_api_key || process.env.PAYPACK_API_KEY || '').trim();
+        const apiSecret = (settingsData?.paypack_api_secret || process.env.PAYPACK_API_SECRET || '').trim();
 
         if (!apiKey) {
             return res.status(500).json({ error: 'PayPack configuration missing' });
@@ -47,15 +57,20 @@ export default async function handler(req: any, res: any) {
 
         const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
 
-        const response = await fetch(`https://api.paypack.co.rw/v1/transactions/${id}/status`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Basic ${auth}`,
-                'Content-Type': 'application/json'
-            }
-        });
+        let response;
+        try {
+            response = await fetch(`https://api.paypack.co.rw/v1/transactions/${id}/status`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Basic ${auth}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+        } catch (fetchErr: any) {
+            throw new Error(`PayPack Status Network Error (fetch failed): ${fetchErr.message}`);
+        }
 
-        const data: any = await response.json();
+        const data: any = await response.json().catch(() => ({ message: 'Invalid JSON response from PayPack' }));
 
         if (response.ok) {
             res.json({
@@ -66,14 +81,14 @@ export default async function handler(req: any, res: any) {
         } else {
             res.status(response.status).json({
                 success: false,
-                error: data.message || 'Failed to check status'
+                error: data.message || `PayPack Status Error (${response.status}): ${JSON.stringify(data)}`
             });
         }
     } catch (error: any) {
-        console.error('PayPack status check error:', error);
+        console.error('Status Error:', error);
         res.status(500).json({
             success: false,
-            error: `Payment status error: ${error.message || 'Unknown error'}`
+            error: error.message || 'Unable to check transaction status'
         });
     }
 }
