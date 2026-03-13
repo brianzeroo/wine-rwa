@@ -48,7 +48,7 @@ export default async function handler(req: any, res: any) {
         let response;
         try {
             console.log(`Attempting PayPack authorize: ${provider} - ${phoneNumber} - RWF ${amount}`);
-            response = await fetch('https://api.paypack.co.rw/v1/transactions/authorize', {
+            response = await fetch('https://payments.paypack.rw/api/v1/transactions/authorize', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Basic ${auth}`,

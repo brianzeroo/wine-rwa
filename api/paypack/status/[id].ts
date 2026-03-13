@@ -59,7 +59,7 @@ export default async function handler(req: any, res: any) {
 
         let response;
         try {
-            response = await fetch(`https://api.paypack.co.rw/v1/transactions/${id}/status`, {
+            response = await fetch(`https://payments.paypack.rw/api/v1/transactions/${id}/status`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Basic ${auth}`,
