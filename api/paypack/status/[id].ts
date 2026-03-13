@@ -67,6 +67,18 @@ export default async function handler(req: any, res: any) {
                     'Accept': 'application/json'
                 }
             });
+
+            if (response.status === 404) {
+                console.log('Status V1 endpoint 404, trying root /api/transactions/${id}/status');
+                response = await fetch(`https://payments.paypack.rw/api/transactions/${id}/status`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Basic ${auth}`,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                });
+            }
         } catch (fetchErr: any) {
             console.error('Status Fetch Error Detail:', fetchErr);
             const cause = fetchErr.cause ? ` (Cause: ${fetchErr.cause.message || fetchErr.cause.code || JSON.stringify(fetchErr.cause)})` : '';

@@ -48,6 +48,7 @@ export default async function handler(req: any, res: any) {
         let response;
         try {
             console.log(`Attempting PayPack authorize: ${provider} - ${phoneNumber} - RWF ${amount}`);
+            // Try the V1 endpoint first on the new host
             response = await fetch('https://payments.paypack.rw/api/v1/transactions/authorize', {
                 method: 'POST',
                 headers: {
@@ -61,16 +62,34 @@ export default async function handler(req: any, res: any) {
                     network: provider
                 })
             });
+
+            // If 404, the path might be different on the new host (e.g., no /v1)
+            if (response.status === 404) {
+                console.log('V1 endpoint 404, trying root /api/transactions/authorize');
+                response = await fetch('https://payments.paypack.rw/api/transactions/authorize', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Basic ${auth}`,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        amount: Number(amount),
+                        phone: phoneNumber,
+                        network: provider
+                    })
+                });
+            }
         } catch (fetchErr: any) {
             console.error('Fetch Error Detail:', fetchErr);
             const cause = fetchErr.cause ? ` (Cause: ${fetchErr.cause.message || fetchErr.cause.code || JSON.stringify(fetchErr.cause)})` : '';
-            throw new Error(`PayPack Network Error: ${fetchErr.message}${cause}. Please verify Vercel outbound connectivity.`);
+            throw new Error(`PayPack Network Error: ${fetchErr.message}${cause}. Host payments.paypack.rw might be unreachable.`);
         }
 
         const data: any = await response.json().catch(() => ({ message: 'Invalid JSON response from PayPack' }));
 
         if (response.ok) {
-            res.json({ success: true, transactionId: data.transaction_id });
+            res.json({ success: true, transactionId: data.transaction_id || data.id });
         } else {
             res.status(response.status).json({
                 success: false,
