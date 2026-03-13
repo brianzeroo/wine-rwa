@@ -20,7 +20,7 @@ function AppContent() {
   const [settings, setSettings] = React.useState<AppSettings>({
     paypackApiKey: 'ID7ef50f2e-1659-11f1-aa4f-deadd43720af',
     paypackApiSecret: '340cf2aac9c7239b3eb96b8783a67206da39a3ee5e6b4b0d3255bfef95601890afd80709',
-    storeName: 'Vintner & Spirit',
+    storeName: 'Wine RWA',
     isMaintenanceMode: false,
     emailNotifications: true,
   });
@@ -118,7 +118,7 @@ function AppContent() {
           setSettings({
             paypackApiKey: s.paypack_api_key || '',
             paypackApiSecret: s.paypack_api_secret || '',
-            storeName: s.store_name || 'Vintner & Spirit',
+            storeName: s.store_name || 'Wine RWA',
             isMaintenanceMode: Boolean(s.is_maintenance_mode),
             emailNotifications: Boolean(s.email_notifications),
             adminPassword: s.admin_password || 'admin123'
@@ -210,7 +210,7 @@ function AppContent() {
       const { error } = await supabase.from('settings').update({
         paypack_api_key: newSettings.paypackApiKey || '',
         paypack_api_secret: newSettings.paypackApiSecret || '',
-        store_name: newSettings.storeName || 'Vintner & Spirit',
+        store_name: newSettings.storeName || 'Wine RWA',
         is_maintenance_mode: newSettings.isMaintenanceMode,
         email_notifications: newSettings.emailNotifications,
         admin_password: newSettings.adminPassword || 'admin123'
@@ -369,7 +369,7 @@ function AppContent() {
       {showNavbar && (
         <footer className="py-12 border-t border-white/5 bg-surface">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-4">
-            <p className="text-gold font-serif text-xl tracking-tighter">Vintner & Spirit</p>
+            <p className="text-gold font-serif text-xl tracking-tighter">Wine RWA</p>
             <p className="text-white/20 text-[10px] uppercase tracking-[0.4em]">
               Excellence in every pour • Since 2024
             </p>
