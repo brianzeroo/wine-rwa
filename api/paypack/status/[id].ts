@@ -70,10 +70,10 @@ export default async function handler(req: any, res: any) {
             });
         }
     } catch (error: any) {
-        console.error('PayPack status check error:', error.message);
+        console.error('PayPack status check error:', error);
         res.status(500).json({
             success: false,
-            error: 'Unable to check transaction status'
+            error: `Payment status error: ${error.message || 'Unknown error'}`
         });
     }
 }

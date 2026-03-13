@@ -52,10 +52,10 @@ export default async function handler(req: any, res: any) {
             });
         }
     } catch (error: any) {
-        console.error('PayPack authorization error:', error.message);
+        console.error('PayPack authorization error:', error);
         res.status(500).json({
             success: false,
-            error: 'Payment service unavailable. Please try again.'
+            error: `Payment service error: ${error.message || 'Unknown error'}. Please check your Vercel settings and Supabase tables.`
         });
     }
 }
