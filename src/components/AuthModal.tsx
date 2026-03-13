@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { X, Smartphone, Lock, User, Eye, EyeOff } from 'lucide-react';
-import { getCustomerByEmail, createCustomer } from '../api/customers';
+import { registerUser, loginUser } from '../api/auth';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -48,34 +48,24 @@ export default function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) 
 
     try {
       if (isLoginMode) {
-        // Simplified login: check if customer exists by phone (using email field as proxy or phone lookup)
-        // Since we don't have a specific auth system yet, we verify by phone number
-        const customer = await getCustomerByEmail(formData.phone); // Assuming phone is stored in email or handled by lookup
+        const user = await loginUser(formData.phone, formData.password);
 
-        if (customer) {
-          // Success
-          localStorage.setItem('user', JSON.stringify(customer));
-          onLogin(customer as any);
+        if (user) {
+          localStorage.setItem('user', JSON.stringify(user));
+          onLogin(user);
           onClose();
         } else {
-          setError('Account not found');
+          setError('Invalid phone number or PIN');
         }
       } else {
-        // Simple registration
-        const newCustomer = await createCustomer({
-          name: 'User',
-          email: formData.phone, // Using phone as email for identification in this simple setup
-          phone: formData.phone,
-          address: '',
-          loyaltyPoints: 0
-        });
+        const newUser = await registerUser(formData.phone, formData.password);
 
-        localStorage.setItem('user', JSON.stringify(newCustomer));
-        onLogin(newCustomer as any);
+        localStorage.setItem('user', JSON.stringify(newUser));
+        onLogin(newUser);
         onClose();
       }
-    } catch (err) {
-      setError('Something went wrong. Please try again.');
+    } catch (err: any) {
+      setError(err.message || 'Something went wrong. Please try again.');
     } finally {
       setIsLoading(false);
     }
