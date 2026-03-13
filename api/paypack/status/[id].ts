@@ -63,11 +63,14 @@ export default async function handler(req: any, res: any) {
                 method: 'GET',
                 headers: {
                     'Authorization': `Basic ${auth}`,
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                 }
             });
         } catch (fetchErr: any) {
-            throw new Error(`PayPack Status Network Error (fetch failed): ${fetchErr.message}`);
+            console.error('Status Fetch Error Detail:', fetchErr);
+            const cause = fetchErr.cause ? ` (Cause: ${fetchErr.cause.message || fetchErr.cause.code || JSON.stringify(fetchErr.cause)})` : '';
+            throw new Error(`PayPack Status Network Error: ${fetchErr.message}${cause}`);
         }
 
         const data: any = await response.json().catch(() => ({ message: 'Invalid JSON response from PayPack' }));

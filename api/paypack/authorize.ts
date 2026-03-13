@@ -47,11 +47,13 @@ export default async function handler(req: any, res: any) {
 
         let response;
         try {
+            console.log(`Attempting PayPack authorize: ${provider} - ${phoneNumber} - RWF ${amount}`);
             response = await fetch('https://api.paypack.co.rw/v1/transactions/authorize', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Basic ${auth}`,
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                 },
                 body: JSON.stringify({
                     amount: Number(amount),
@@ -60,7 +62,9 @@ export default async function handler(req: any, res: any) {
                 })
             });
         } catch (fetchErr: any) {
-            throw new Error(`PayPack Network Error (fetch failed): ${fetchErr.message}`);
+            console.error('Fetch Error Detail:', fetchErr);
+            const cause = fetchErr.cause ? ` (Cause: ${fetchErr.cause.message || fetchErr.cause.code || JSON.stringify(fetchErr.cause)})` : '';
+            throw new Error(`PayPack Network Error: ${fetchErr.message}${cause}. Please verify Vercel outbound connectivity.`);
         }
 
         const data: any = await response.json().catch(() => ({ message: 'Invalid JSON response from PayPack' }));
