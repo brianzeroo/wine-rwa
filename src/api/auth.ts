@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import bcrypt from 'bcryptjs';
 
 export interface User {
     id: string;
@@ -9,13 +10,16 @@ export interface User {
 export const registerUser = async (phone: string, pin: string, name: string = 'User'): Promise<User> => {
     const userId = `user${Date.now()}`;
 
+    // Hash the PIN before storing
+    const hashedPin = await bcrypt.hash(pin, 10);
+
     // Create the auth record in the users table
     const { data: newUser, error: userError } = await supabase
         .from('users')
         .insert({
             id: userId,
             phone,
-            password: pin, // In a real app, hash this!
+            password: hashedPin,
             name
         })
         .select()
@@ -48,14 +52,18 @@ export const registerUser = async (phone: string, pin: string, name: string = 'U
 };
 
 export const loginUser = async (phone: string, pin: string): Promise<User | null> => {
+    // 1. Fetch user by phone only
     const { data, error } = await supabase
         .from('users')
         .select('*')
         .eq('phone', phone)
-        .eq('password', pin)
         .maybeSingle();
 
     if (error || !data) return null;
+
+    // 2. Securely compare the plaintext PIN with the hashed PIN in the database
+    const isValid = await bcrypt.compare(pin, data.password);
+    if (!isValid) return null;
 
     return {
         id: data.id,
