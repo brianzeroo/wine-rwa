@@ -43,57 +43,68 @@ export default async function handler(req: any, res: any) {
             return res.json({ success: true, transactionId: `mock-${Date.now()}` });
         }
 
-        const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
-
-        let response;
+        // Step 1: Get Access Token
+        let tokenResponse;
         try {
-            console.log(`Attempting PayPack authorize: ${provider} - ${phoneNumber} - RWF ${amount}`);
-            // Try the V1 endpoint first on the new host
-            response = await fetch('https://payments.paypack.rw/api/v1/transactions/authorize', {
+            console.log(`Getting PayPack JWT Token for client_id: ${apiKey}`);
+            tokenResponse = await fetch('https://payments.paypack.rw/api/auth/agents/authorize', {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Basic ${auth}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    client_id: apiKey,
+                    client_secret: apiSecret
+                })
+            });
+        } catch (authErr: any) {
+            console.error('Auth Fetch Error Detail:', authErr);
+            throw new Error(`PayPack Auth Network Error: ${authErr.message}`);
+        }
+
+        const authData: any = await tokenResponse.json().catch(() => ({ message: 'Invalid JSON from Auth' }));
+
+        if (!tokenResponse.ok || !authData.access) {
+            console.error('Failed to get PayPack token:', authData);
+            return res.status(tokenResponse.status || 500).json({
+                success: false,
+                error: `PayPack Auth Error: ${authData.message || 'Could not retrieve access token'}`
+            });
+        }
+
+        const accessToken = authData.access;
+
+        // Step 2: Initiate Cashin
+        let response;
+        try {
+            console.log(`Attempting PayPack cashin: ${phoneNumber} - RWF ${amount}`);
+            response = await fetch('https://payments.paypack.rw/api/transactions/cashin', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
                 body: JSON.stringify({
                     amount: Number(amount),
-                    phone: phoneNumber,
-                    network: provider
+                    number: phoneNumber
                 })
             });
-
-            // If 404, the path might be different on the new host (e.g., no /v1)
-            if (response.status === 404) {
-                console.log('V1 endpoint 404, trying root /api/transactions/authorize');
-                response = await fetch('https://payments.paypack.rw/api/transactions/authorize', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Basic ${auth}`,
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        amount: Number(amount),
-                        phone: phoneNumber,
-                        network: provider
-                    })
-                });
-            }
         } catch (fetchErr: any) {
-            console.error('Fetch Error Detail:', fetchErr);
+            console.error('Cashin Fetch Error Detail:', fetchErr);
             const cause = fetchErr.cause ? ` (Cause: ${fetchErr.cause.message || fetchErr.cause.code || JSON.stringify(fetchErr.cause)})` : '';
-            throw new Error(`PayPack Network Error: ${fetchErr.message}${cause}. Host payments.paypack.rw might be unreachable.`);
+            throw new Error(`PayPack Cashin Network Error: ${fetchErr.message}${cause}`);
         }
 
-        const data: any = await response.json().catch(() => ({ message: 'Invalid JSON response from PayPack' }));
+        const data: any = await response.json().catch(() => ({ message: 'Invalid JSON response from PayPack Cashin' }));
 
         if (response.ok) {
-            res.json({ success: true, transactionId: data.transaction_id || data.id });
+            res.json({ success: true, transactionId: data.ref || data.transaction_id || data.id });
         } else {
             res.status(response.status).json({
                 success: false,
-                error: data.message || `PayPack Error (${response.status}): ${JSON.stringify(data)}`
+                error: data.message || `PayPack Cashin Error (${response.status}): ${JSON.stringify(data)}`
             });
         }
     } catch (error: any) {
