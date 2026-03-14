@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import Navbar from './components/Navbar';
 import Cart from './components/Cart';
@@ -11,6 +11,7 @@ import Checkout from './pages/Checkout';
 import Maintenance from './pages/Maintenance';
 import TrackOrder from './pages/TrackOrder';
 import UserDashboard from './pages/UserDashboard';
+import Terms from './pages/Terms';
 import { Product, CartItem, Order, AppSettings, Customer } from './types';
 import { supabase } from './supabaseClient';
 
@@ -332,6 +333,7 @@ function AppContent() {
           <Route path="/liquor" element={<StoreEnhanced products={products} onAddToCart={handleAddToCart} />} />
           <Route path="/checkout" element={<Checkout items={cartItems} onClearCart={handleClearCart} onCreateOrder={handleCreateOrder} currentUser={currentUser} />} />
           <Route path="/track-order" element={<TrackOrder orders={orders} />} />
+          <Route path="/terms" element={<Terms />} />
           <Route
             path="/dashboard"
             element={
@@ -374,11 +376,11 @@ function AppContent() {
               Excellence in every pour • Since 2024
             </p>
             <div className="pt-8 flex justify-center space-x-8 text-white/40 text-xs uppercase tracking-widest">
-              <a href="#" className="hover:text-gold transition-colors">Terms</a>
+              <Link to="/terms" className="hover:text-gold transition-colors">Terms</Link>
               <a href="#" className="hover:text-gold transition-colors">Privacy</a>
-              <a href="/track-order" className="hover:text-gold transition-colors">Track Order</a>
+              <Link to="/track-order" className="hover:text-gold transition-colors">Track Order</Link>
               {currentUser && (
-                <a href="/dashboard" className="hover:text-gold transition-colors">My Account</a>
+                <Link to="/dashboard" className="hover:text-gold transition-colors">My Account</Link>
               )}
             </div>
             <p className="text-white/30 text-[10px] mt-4">
