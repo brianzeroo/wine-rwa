@@ -30,13 +30,6 @@ export default async function handler(req: any, res: any) {
             return res.status(400).json({ error: 'Missing transaction ID' });
         }
 
-        if (String(id).startsWith('mock-')) {
-            return res.json({
-                success: true,
-                status: 'completed',
-                message: 'Mock payment completed'
-            });
-        }
 
         const { data: settingsData, error: dbError } = await supabase
             .from('settings')

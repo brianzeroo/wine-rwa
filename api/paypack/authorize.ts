@@ -40,7 +40,7 @@ export default async function handler(req: any, res: any) {
         const apiSecret = (settingsData?.paypack_api_secret || process.env.PAYPACK_API_SECRET || '').trim();
 
         if (!apiKey || apiKey === '') {
-            return res.json({ success: true, transactionId: `mock-${Date.now()}` });
+            return res.status(500).json({ success: false, error: 'PayPack configuration missing' });
         }
 
         // Step 1: Get Access Token
