@@ -52,6 +52,7 @@ export default function Admin({
   const [discountCodes, setDiscountCodes] = useState<DiscountCode[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [productForm, setProductForm] = useState({
@@ -867,9 +868,17 @@ export default function Admin({
             <h2 className="text-2xl font-serif text-white">Settings</h2>
 
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
-                onUpdateSettings(settings);
+                setIsSavingSettings(true);
+                try {
+                  await onUpdateSettings(settings);
+                  alert('Settings saved successfully! ✅');
+                } catch (err: any) {
+                  alert('Error saving settings: ' + (err.message || 'Unknown error'));
+                } finally {
+                  setIsSavingSettings(false);
+                }
               }}
               className="max-w-2xl space-y-6"
             >
@@ -929,9 +938,17 @@ export default function Admin({
 
               <button
                 type="submit"
-                className="px-6 py-3 bg-gold text-dark font-bold rounded-lg hover:bg-gold/90 transition-colors"
+                disabled={isSavingSettings}
+                className="px-6 py-3 bg-gold text-dark font-bold rounded-lg hover:bg-gold/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[160px]"
               >
-                Save Settings
+                {isSavingSettings ? (
+                  <div className="flex items-center space-x-2">
+                    <div className="w-5 h-5 border-2 border-dark/30 border-t-dark rounded-full animate-spin" />
+                    <span>Saving...</span>
+                  </div>
+                ) : (
+                  'Save Settings'
+                )}
               </button>
             </form>
 
