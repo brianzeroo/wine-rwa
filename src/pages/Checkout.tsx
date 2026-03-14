@@ -165,11 +165,11 @@ export default function Checkout({ items, onClearCart, onCreateOrder, currentUse
         const statusResponse = await fetch(`/api/paypack/status/${transactionId}`);
         if (statusResponse.ok) {
           const statusData = await statusResponse.json();
-          if (statusData.status === 'completed') {
+          if (statusData.status === 'successful' || statusData.status === 'completed') {
             paymentComplete = true;
             break;
-          } else if (statusData.status === 'failed') {
-            throw new Error('Payment was declined. Please try again.');
+          } else if (statusData.status === 'failed' || statusData.status === 'cancelled') {
+            throw new Error('Payment was declined or cancelled. Please try again.');
           }
         }
         attempts++;
