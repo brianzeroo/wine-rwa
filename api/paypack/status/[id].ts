@@ -30,7 +30,6 @@ export default async function handler(req: any, res: any) {
             return res.status(400).json({ error: 'Missing transaction ID' });
         }
 
-
         const { data: settingsData, error: dbError } = await supabase
             .from('settings')
             .select('*')

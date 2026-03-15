@@ -133,31 +133,36 @@ export default function Checkout({ items, onClearCart, onCreateOrder, currentUse
         customerId = newCustomer.id;
       }
 
-      // NOTE: In a production Netlify environment, these should be moved to Netlify Functions
-      // to keep API keys secure and avoid CORS/routing issues.
-      // For now, we keep them as is, but they will likely fail without a proxy or functions.
-      const paypackResponse = await fetch('/api/paypack/authorize', {
+      // Secure Order Initiation
+      const checkoutResponse = await fetch('/api/checkout/initiate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amount: finalTotal,
-          phoneNumber,
-          provider: paymentMethod
+          items,
+          customerId,
+          customerName,
+          customerPhone: phoneNumber,
+          customerEmail,
+          shippingAddress,
+          notes,
+          paymentMethod,
+          discountCode: appliedDiscountCode
         })
       });
 
-      if (!paypackResponse.ok) {
-        const errorData = await paypackResponse.json();
-        throw new Error(errorData.error || 'Payment failed');
+      if (!checkoutResponse.ok) {
+        const errorData = await checkoutResponse.json();
+        throw new Error(errorData.error || 'Payment initiation failed');
       }
 
-      const paypackData = await paypackResponse.json();
-      const transactionId = paypackData.transactionId;
+      const checkoutData = await checkoutResponse.json();
+      const transactionId = checkoutData.transactionId;
+      const orderId = checkoutData.orderId;
 
-      // Wait for payment confirmation (polling status)
+      // Wait for payment confirmation (polling status just for UI)
       let paymentComplete = false;
       let attempts = 0;
-      const maxAttempts = 30; // 30 seconds timeout
+      const maxAttempts = 45; // 45 seconds timeout
 
       while (!paymentComplete && attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 1000)); // Check every second
@@ -165,7 +170,7 @@ export default function Checkout({ items, onClearCart, onCreateOrder, currentUse
         const statusResponse = await fetch(`/api/paypack/status/${transactionId}`);
         if (statusResponse.ok) {
           const statusData = await statusResponse.json();
-          if (statusData.status === 'successful' || statusData.status === 'completed') {
+          if (statusData.status === 'successful' || statusData.status === 'completed' || statusData.status === 'Paid') {
             paymentComplete = true;
             break;
           } else if (statusData.status === 'failed' || statusData.status === 'cancelled') {
@@ -176,38 +181,18 @@ export default function Checkout({ items, onClearCart, onCreateOrder, currentUse
       }
 
       if (!paymentComplete) {
-        throw new Error('Payment timeout. Please try again.');
+        throw new Error('Payment timeout. Your order is pending. Check your dashboard later.');
       }
 
-      // Increment usage count ONLY after successful payment
-      if (discountId) {
-        await incrementDiscountCodeUsage(discountId);
-      }
+      // We no longer call onCreateOrder() here because the server creates it reliably via Webhook!
+      // The server also handles incrementing discount code usage and loyalty points securely!
 
-      // Create the order with discount information
-      await onCreateOrder({
-        customerId,
-        customerName,
-        customerPhone: phoneNumber,
-        customerEmail,
-        items,
-        total: totalWithoutDiscount,
-        discountAmount: discountAmount || undefined,
-        finalTotal,
-        paymentMethod,
-        shippingAddress: shippingAddress || undefined,
-        notes: notes || undefined
-      });
+      // Clear the cart
+      onClearCart();
 
-      // Add loyalty points if customer exists
-      if (customerId) {
-        const pointsToAdd = Math.floor(finalTotal / 1000); // 1 point per 1000 RWF spent
-        await addCustomerLoyaltyPoints(customerId, pointsToAdd);
-      }
-
-      alert('Payment successful! Your order is being prepared.');
+      alert('Payment successful! Your order has been placed.');
       setIsProcessing(false);
-      navigate('/');
+      navigate('/track-order');
     } catch (error: any) {
       console.error('Payment processing error:', error);
       alert(error.message || 'Payment processing failed. Please try again.');

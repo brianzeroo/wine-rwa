@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS orders (
   discount_amount DECIMAL(10, 2) DEFAULT 0,
   final_total DECIMAL(10, 2) NOT NULL,
   status VARCHAR(50) DEFAULT 'Pending',
+  transaction_id VARCHAR(255),
   payment_method VARCHAR(50),
   shipping_address TEXT,
   notes TEXT,
