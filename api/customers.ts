@@ -50,52 +50,39 @@ export default async function handler(req: any, res: any) {
         }
     }
 
-    // --- Action: ALL/SPECIFIC CUSTOMER (Requires Admin Auth) ---
-    const authenticated = await isAdmin();
-    if (!authenticated) {
-        return res.status(401).json({ error: 'Unauthorized: Admin privileges required' });
-    }
-
-    // Determine ID from URL: /api/customers/ID or /api/customers
     const segments = path.split('/').filter(Boolean);
     const customerId = segments.length > 2 ? segments[2] : null;
 
     try {
-        if (method === 'GET') {
-            if (customerId) {
-                // Fetch Single Customer
-                const { data, error } = await supabase
-                    .from('customers')
-                    .select('*')
-                    .eq('id', customerId)
-                    .maybeSingle();
-
-                if (error || !data) return res.status(404).json({ error: 'Customer not found' });
-                return res.json(data);
-            } else {
-                // Fetch All Customers
-                const { data, error } = await supabase
-                    .from('customers')
-                    .select('*')
-                    .order('name');
-
-                if (error) throw error;
-                return res.json(data || []);
-            }
-        }
-
-        if (method === 'POST') {
+        if (method === 'GET' && customerId) {
+            // Fetch Single Customer (Public by ID)
             const { data, error } = await supabase
                 .from('customers')
-                .insert(body)
-                .select()
-                .single();
+                .select('*')
+                .eq('id', customerId)
+                .maybeSingle();
 
+            if (error || !data) return res.status(404).json({ error: 'Customer not found' });
+            return res.json(data);
+        }
+
+        if (method === 'POST' && !customerId) {
+            // Create Customer (Public for registration)
+            const { id, ...newCust } = body;
+            const dbCustomer = {
+                id: id || `cust${Date.now()}`,
+                ...newCust,
+                join_date: new Date().toISOString().split('T')[0],
+                total_spent: 0,
+                order_count: 0
+            };
+            const { data, error } = await supabase.from('customers').insert(dbCustomer).select().single();
             if (error) throw error;
             return res.status(201).json(data);
         }
 
         if (method === 'PUT' && customerId) {
+            // Update Customer (Public for profile updates)
             const { data, error } = await supabase
                 .from('customers')
                 .update(body)
@@ -104,15 +91,28 @@ export default async function handler(req: any, res: any) {
                 .single();
 
             if (error) throw error;
-            return res.json(data);
+            return res.json(body);
+        }
+
+        // --- Actions below require ADMIN auth ---
+        const authenticated = await isAdmin();
+        if (!authenticated) {
+            return res.status(401).json({ error: 'Unauthorized: Admin privileges required' });
+        }
+
+        if (method === 'GET' && !customerId) {
+            // Fetch All Customers (Admin only)
+            const { data, error } = await supabase
+                .from('customers')
+                .select('*')
+                .order('name');
+
+            if (error) throw error;
+            return res.json(data || []);
         }
 
         if (method === 'DELETE' && customerId) {
-            const { error } = await supabase
-                .from('customers')
-                .delete()
-                .eq('id', customerId);
-
+            const { error } = await supabase.from('customers').delete().eq('id', customerId);
             if (error) throw error;
             return res.status(204).send('');
         }

@@ -45,18 +45,42 @@ export default async function handler(req: any, res: any) {
     const segments = path.split('/').filter(Boolean);
     const identifier = segments.length > 2 ? segments[2] : null;
 
-    // --- Action: INCREMENT USAGE (Publicly used during/after checkout) ---
-    if (path.endsWith('/increment-usage')) {
-        if (method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-        try {
-            const discId = segments[segments.length - 2];
-            const { data: existing } = await supabase
+    try {
+        // --- Action: LIST ALL DISCOUNTS (Public in server.ts) ---
+        if (method === 'GET' && !identifier) {
+            const { data, error } = await supabase
                 .from('discount_codes')
-                .select('used_count')
-                .eq('id', discId)
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            return res.json((data || []).map(mapDiscountToFrontend));
+        }
+
+        // --- Action: VALIDATE CODE (Public) ---
+        if (method === 'GET' && identifier) {
+            const { data, error } = await supabase
+                .from('discount_codes')
+                .select('*')
+                .ilike('code', identifier)
+                .eq('is_active', true)
                 .maybeSingle();
 
+            if (error || !data) return res.status(404).json({ error: 'Discount code not found or inactive' });
+            return res.json(mapDiscountToFrontend(data));
+        }
+
+        // --- Actions below require ADMIN auth ---
+        const authenticated = await isAdmin();
+        if (!authenticated) {
+            return res.status(401).json({ error: 'Unauthorized: Admin privileges required' });
+        }
+
+        // --- Action: INCREMENT USAGE (Admin in server.ts) ---
+        if (path.endsWith('/increment-usage')) {
+            if (method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+            const discId = segments[segments.length - 2];
+            const { data: existing } = await supabase.from('discount_codes').select('used_count').eq('id', discId).maybeSingle();
             if (!existing) return res.status(404).json({ error: 'Discount code not found' });
 
             const { data, error } = await supabase
@@ -68,45 +92,6 @@ export default async function handler(req: any, res: any) {
 
             if (error) throw error;
             return res.json(mapDiscountToFrontend(data));
-        } catch (error: any) {
-            return res.status(500).json({ error: 'Failed to increment usage' });
-        }
-    }
-
-    // --- Action: VALIDATE CODE (Publicly used during checkout) ---
-    // If it's a GET /api/discounts/XYZ and NOT the list
-    if (method === 'GET' && identifier && identifier !== 'discounts') {
-        try {
-            const { data, error } = await supabase
-                .from('discount_codes')
-                .select('*')
-                .ilike('code', identifier)
-                .eq('is_active', true)
-                .maybeSingle();
-
-            if (error || !data) return res.status(404).json({ error: 'Discount code not found or inactive' });
-            return res.json(mapDiscountToFrontend(data));
-        } catch (error: any) {
-            return res.status(500).json({ error: 'Failed to fetch discount code' });
-        }
-    }
-
-    // --- Actions below require ADMIN auth ---
-    const authenticated = await isAdmin();
-    if (!authenticated) {
-        return res.status(401).json({ error: 'Unauthorized: Admin privileges required' });
-    }
-
-    try {
-        if (method === 'GET' && !identifier) {
-            // List all discounts
-            const { data, error } = await supabase
-                .from('discount_codes')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
-            return res.json((data || []).map(mapDiscountToFrontend));
         }
 
         if (method === 'POST') {

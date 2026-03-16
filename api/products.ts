@@ -38,17 +38,23 @@ export default async function handler(req: any, res: any) {
         }
     };
 
-    const authenticated = await isAdmin();
-    if (!authenticated) {
-        return res.status(401).json({ error: 'Unauthorized: Admin privileges required' });
-    }
-
     const segments = path.split('/').filter(Boolean);
     // Path structure: /api/products/[id]/...
     const identifier = segments.length > 2 ? segments[2] : null;
 
     try {
-        // --- Action: LOW STOCK ---
+        // --- Action: LIST ALL PRODUCTS (Public) ---
+        if (method === 'GET' && !identifier && !path.endsWith('/low-stock')) {
+            const { data, error } = await supabase
+                .from('products')
+                .select('*')
+                .order('name');
+
+            if (error) throw error;
+            return res.json((data || []).map(mapProductToFrontend));
+        }
+
+        // --- Action: LOW STOCK (Public in server.ts) ---
         if (path.endsWith('/low-stock') && method === 'GET') {
             const { data, error } = await supabase
                 .from('products')
@@ -57,6 +63,12 @@ export default async function handler(req: any, res: any) {
 
             if (error) throw error;
             return res.json((data || []).map(mapProductToFrontend));
+        }
+
+        // --- All other actions require Admin Auth ---
+        const authenticated = await isAdmin();
+        if (!authenticated) {
+            return res.status(401).json({ error: 'Unauthorized: Admin privileges required' });
         }
 
         // --- Action: INVENTORY UPDATE ---

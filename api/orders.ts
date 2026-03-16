@@ -45,13 +45,8 @@ export default async function handler(req: any, res: any) {
         }
     };
 
-    // --- Action: LIST ORDERS (Requires Admin Auth) ---
+    // --- Action: LIST ORDERS (Public or Limited) ---
     if (method === 'GET') {
-        const authenticated = await isAdmin();
-        if (!authenticated) {
-            return res.status(401).json({ error: 'Unauthorized: Admin privileges required' });
-        }
-
         try {
             const limit = query.limit ? parseInt(query.limit as string) : 50;
             const { data, error } = await supabase
