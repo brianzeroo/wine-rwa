@@ -5,12 +5,29 @@ const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+import { z } from 'zod';
+
+const AuthorizeSchema = z.object({
+    amount: z.union([z.number(), z.string().regex(/^\d+$/).transform(Number)]).pipe(z.number().positive()),
+    phoneNumber: z.string().regex(/^\d{10,12}$/, "Invalid phone number format (10-12 digits required)"),
+    provider: z.string().optional()
+});
+
 export default async function handler(req: any, res: any) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const { amount, phoneNumber, provider } = req.body;
+    const validation = AuthorizeSchema.safeParse(req.body);
+    if (!validation.success) {
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid input',
+            details: validation.error.flatten().fieldErrors
+        });
+    }
+
+    const { amount, phoneNumber, provider } = validation.data;
 
     // Re-initialize or verify client inside handler to ensure fresh environment access
     const supabaseUrl = process.env.VITE_SUPABASE_URL || '';

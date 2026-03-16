@@ -5,12 +5,27 @@ const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+import { z } from 'zod';
+
+const StatusSchema = z.object({
+    id: z.string().min(1, "Transaction ID is required").regex(/^[a-zA-Z0-9_-]+$/, "Invalid transaction ID format")
+});
+
 export default async function handler(req: any, res: any) {
     if (req.method !== 'GET') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const { id } = req.query;
+    const validation = StatusSchema.safeParse(req.query);
+    if (!validation.success) {
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid input',
+            details: validation.error.flatten().fieldErrors
+        });
+    }
+
+    const { id } = validation.data;
 
     // Re-initialize or verify client inside handler to ensure fresh environment access
     const supabaseUrl = process.env.VITE_SUPABASE_URL || '';

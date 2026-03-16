@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import crypto from 'crypto';
 
 export default async function handler(req: any, res: any) {
     if (req.method !== 'POST') {
@@ -7,11 +8,31 @@ export default async function handler(req: any, res: any) {
 
     try {
         const body = req.body;
-        console.log('Received Webhook from PayPack:', JSON.stringify(body, null, 2));
+        const signature = req.headers['x-paypack-signature'];
+        const webhookSecret = process.env.PAYPACK_WEBHOOK_SECRET;
 
-        // Note: In production you should verify the PayPack webhook signature/secret here
-        // to prevent spoofed webhook requests. 
-        // Example: if (req.headers['x-paypack-signature'] !== expected) return res.status(401).end();
+        // 1. Verify Configuration
+        if (!webhookSecret) {
+            console.error('CRITICAL: PAYPACK_WEBHOOK_SECRET is not configured.');
+            return res.status(500).json({ error: 'Webhook configuration error' });
+        }
+
+        // 2. Verify Signature
+        if (!signature) {
+            console.warn('Webhook rejected: Missing x-paypack-signature header.');
+            return res.status(401).json({ error: 'Missing signature' });
+        }
+
+        const hmac = crypto.createHmac('sha256', webhookSecret);
+        const bodyString = typeof body === 'string' ? body : JSON.stringify(body);
+        const calculatedSignature = hmac.update(bodyString).digest('hex');
+
+        if (signature !== calculatedSignature) {
+            console.warn('Webhook rejected: Invalid signature.');
+            return res.status(401).json({ error: 'Invalid signature' });
+        }
+
+        console.log('Received Valid Webhook from PayPack:', JSON.stringify(body, null, 2));
 
         const transactionId = body.data?.ref || body.data?.transaction_id || body.data?.id;
         const status = body.data?.status; // 'successful', 'failed', etc.

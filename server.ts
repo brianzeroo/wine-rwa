@@ -7,11 +7,51 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
-import { testConnection, initializeDatabase } from './src/database';
-import { supabase } from './src/supabaseClient';
+import jwt from 'jsonwebtoken';
+import cookieParser from 'cookie-parser';
+import { rateLimit } from 'express-rate-limit';
+import { z } from 'zod';
+
+// Database and Supabase Client are loaded dynamically inside startServer
+// to ensure environment variables are initialized first.
+let testConnection: any;
+let initializeDatabase: any;
+let supabase: any;
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000');
+const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_fallback_key_change_in_production';
+
+// Admin Authentication Middleware
+export const requireAdminAuth = (req: any, res: any, next: any) => {
+  const token = req.cookies?.admin_token;
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized: Missing or invalid token' });
+  }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    if (decoded.role !== 'admin') {
+      return res.status(403).json({ error: 'Forbidden: Admin privileges required' });
+    }
+    // Store admin info in request for downstream routes if needed
+    req.admin = decoded;
+    next();
+  } catch (error: any) {
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    }
+    return res.status(401).json({ error: 'Unauthorized: Invalid token' });
+  }
+};
+
+// Rate limiter for admin login: 5 attempts per 15 minutes
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Limit each IP to 5 login requests per window
+  message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
 
 console.log('✅ Environment variables loaded');
 console.log('Supabase URL:', process.env.VITE_SUPABASE_URL ? 'Loaded ✓' : 'Missing ✗');
@@ -58,6 +98,14 @@ const mapDiscountToFrontend = (dbCode: any) => ({
 });
 
 async function startServer() {
+  // Dynamically import database and supabase after dotenv.config() has run
+  const database = await import('./src/database');
+  testConnection = database.testConnection;
+  initializeDatabase = database.initializeDatabase;
+
+  const supabaseClient = await import('./src/supabaseClient');
+  supabase = supabaseClient.supabase;
+
   // Test database connection
   console.log('\n🔄 Connecting to Supabase database...');
   const dbConnected = await testConnection();
@@ -71,6 +119,7 @@ async function startServer() {
   console.log('✅ Database ready!\n');
 
   app.use(express.json({ limit: '50mb' }));
+  app.use(cookieParser());
 
   // ==================== AUTHENTICATION ROUTES ====================
   app.post('/api/auth/register', async (req, res) => {
@@ -173,7 +222,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/products', async (req, res) => {
+  app.post('/api/products', requireAdminAuth, async (req, res) => {
     try {
       let product = req.body;
       if (!product.name || !product.price) {
@@ -204,7 +253,7 @@ async function startServer() {
     }
   });
 
-  app.put('/api/products/:id', async (req, res) => {
+  app.put('/api/products/:id', requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
       let product = req.body;
@@ -234,7 +283,7 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/products/:id', async (req, res) => {
+  app.delete('/api/products/:id', requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const { error } = await supabase
@@ -265,7 +314,7 @@ async function startServer() {
     }
   });
 
-  app.put('/api/products/:id/inventory', async (req, res) => {
+  app.put('/api/products/:id/inventory', requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const { stock } = req.body;
@@ -460,7 +509,7 @@ async function startServer() {
     }
   });
 
-  app.put('/api/settings', async (req, res) => {
+  app.put('/api/settings', requireAdminAuth, async (req, res) => {
     try {
       const settings = req.body;
 
@@ -493,7 +542,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/admin/login', async (req, res) => {
+  app.post('/api/admin/login', loginLimiter, async (req, res) => {
     try {
       const { password } = req.body;
       const { data, error } = await supabase
@@ -519,11 +568,34 @@ async function startServer() {
         return res.status(401).json({ success: false, error: 'Incorrect password' });
       }
 
+      // Sign JWT upon successful password verification with 2h expiration
+      const token = jwt.sign({ role: 'admin', timestamp: Date.now() }, JWT_SECRET, { expiresIn: '2h' });
+
+      res.cookie('admin_token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 2 * 60 * 60 * 1000 // 2 hours
+      });
+
       res.json({ success: true });
     } catch (error: any) {
       console.error('Admin login error:', error.message);
       res.status(500).json({ error: 'Internal server error' });
     }
+  });
+
+  app.get('/api/admin/check-auth', requireAdminAuth, (req: any, res: any) => {
+    res.json({ success: true, admin: req.admin });
+  });
+
+  app.post('/api/admin/logout', (req, res) => {
+    res.clearCookie('admin_token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
+    });
+    res.json({ success: true });
   });
 
   // ==================== DISCOUNT CODES ROUTES ====================
@@ -562,7 +634,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/discounts', async (req, res) => {
+  app.post('/api/discounts', requireAdminAuth, async (req, res) => {
     try {
       const discountData = req.body;
       const codeName = discountData.code.toUpperCase();
@@ -604,7 +676,7 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/discounts/:id', async (req, res) => {
+  app.delete('/api/discounts/:id', requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const { error } = await supabase
@@ -620,7 +692,7 @@ async function startServer() {
     }
   });
 
-  app.put('/api/discounts/:id', async (req, res) => {
+  app.put('/api/discounts/:id', requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const updates = req.body;
@@ -639,7 +711,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/discounts/:id/increment-usage', async (req, res) => {
+  app.post('/api/discounts/:id/increment-usage', requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
 
@@ -669,7 +741,7 @@ async function startServer() {
   });
 
   // ==================== CUSTOMERS ROUTES ====================
-  app.get('/api/customers', async (req, res) => {
+  app.get('/api/customers', requireAdminAuth, async (req, res) => {
     try {
       const { data, error } = await supabase
         .from('customers')
@@ -936,8 +1008,27 @@ async function startServer() {
   });
 
   // ==================== PAYPACK PAYMENT ROUTES ====================
+  const PayPackAuthorizeSchema = z.object({
+    amount: z.union([z.number(), z.string().regex(/^\d+$/).transform(Number)]).pipe(z.number().positive()),
+    phoneNumber: z.string().regex(/^\d{10,12}$/, "Invalid phone number format (10-12 digits required)"),
+    provider: z.string().optional()
+  });
+
+  const PayPackStatusSchema = z.object({
+    transactionId: z.string().min(1).regex(/^[a-zA-Z0-9_-]+$/, "Invalid transaction ID format")
+  });
+
   app.post('/api/paypack/authorize', async (req, res) => {
-    const { amount, phoneNumber, provider } = req.body;
+    const validation = PayPackAuthorizeSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid input',
+        details: validation.error.flatten().fieldErrors
+      });
+    }
+
+    const { amount, phoneNumber, provider } = validation.data;
 
     try {
       const { data: settingsData } = await supabase
@@ -986,7 +1077,16 @@ async function startServer() {
   });
 
   app.get('/api/paypack/status/:transactionId', async (req, res) => {
-    const { transactionId } = req.params;
+    const validation = PayPackStatusSchema.safeParse(req.params);
+    if (!validation.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid input',
+        details: validation.error.flatten().fieldErrors
+      });
+    }
+
+    const { transactionId } = validation.data;
 
     try {
       if (transactionId.startsWith('mock-')) {
