@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Use Vite's environment variables (automatically loaded)
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+// Use Vite's environment variables (automatically loaded) or fallback to process.env for Node.js
+const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL || process.env?.VITE_SUPABASE_URL) as string;
+const supabaseAnonKey = (import.meta.env?.VITE_SUPABASE_ANON_KEY || process.env?.VITE_SUPABASE_ANON_KEY) as string;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.');

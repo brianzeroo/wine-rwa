@@ -37,46 +37,44 @@ export const getDiscountCodeByCode = async (code: string): Promise<DiscountCode 
 export const createDiscountCode = async (
   discountCode: Omit<DiscountCode, 'id' | 'usedCount'>
 ): Promise<DiscountCode> => {
-  const dbCode = {
-    id: `disc${Date.now()}`,
-    code: discountCode.code.toUpperCase(),
-    type: discountCode.type,
-    value: discountCode.value,
-    min_order_amount: discountCode.minOrderAmount || 0,
-    start_date: discountCode.startDate,
-    end_date: discountCode.endDate,
-    is_active: discountCode.isActive !== undefined ? discountCode.isActive : true,
-    usage_limit: discountCode.usageLimit || 0,
-    used_count: 0,
-  };
-  const { data, error } = await supabase
-    .from('discount_codes')
-    .insert(dbCode)
-    .select()
-    .single();
-  if (error) throw new Error(error.message);
-  return mapDiscount(data);
+  const response = await fetch('/api/discounts', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(discountCode)
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to create discount code: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data as DiscountCode;
 };
 
 export const deleteDiscountCode = async (id: string): Promise<void> => {
-  const { error } = await supabase
-    .from('discount_codes')
-    .delete()
-    .eq('id', id);
-  if (error) throw new Error(error.message);
+  const response = await fetch(`/api/discounts/${id}`, {
+    method: 'DELETE',
+    credentials: 'include'
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to delete discount code: ${response.statusText}`);
+  }
 };
 
 export const incrementDiscountCodeUsage = async (id: string): Promise<void> => {
-  const { data: existing } = await supabase
-    .from('discount_codes')
-    .select('used_count')
-    .eq('id', id)
-    .maybeSingle();
-  if (!existing) return;
+  const response = await fetch(`/api/discounts/${id}/increment-usage`, {
+    method: 'POST',
+    credentials: 'include'
+  });
 
-  const { error } = await supabase
-    .from('discount_codes')
-    .update({ used_count: (existing.used_count || 0) + 1 })
-    .eq('id', id);
-  if (error) throw new Error(error.message);
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to increment usage: ${response.statusText}`);
+  }
 };

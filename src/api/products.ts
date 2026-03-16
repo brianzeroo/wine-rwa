@@ -22,9 +22,9 @@ export const getAllProducts = async (): Promise<Product[]> => {
     .from('products')
     .select('*')
     .order('name');
-  
+
   if (error) throw new Error(error.message);
- return (data || []).map(mapProduct);
+  return (data || []).map(mapProduct);
 };
 
 export const getProductById = async (id: string): Promise<Product | null> => {
@@ -33,78 +33,62 @@ export const getProductById = async (id: string): Promise<Product | null> => {
     .select('*')
     .eq('id', id)
     .maybeSingle();
-  
+
   if (error) throw new Error(error.message);
- return data ? mapProduct(data) : null;
+  return data ? mapProduct(data) : null;
 };
 
 export const createProduct = async (product: Omit<Product, 'id'>): Promise<Product> => {
-  const dbProduct: any = {
-   id: `prod${Date.now()}`,
-    name: product.name,
-    description: product.description,
-    price: product.price,
-    category: product.category,
-    image: product.image,
-    origin: product.origin,
-    abv: product.abv,
-    year: product.year,
-    stock: product.stock,
-    min_stock_level: product.minStockLevel || 0,
-  };
+  const response = await fetch('/api/products', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(product)
+  });
 
-  // Handle tags array - convert to JSON string
-  if (product.tags && Array.isArray(product.tags)) {
-    dbProduct.tags = JSON.stringify(product.tags);
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to create product: ${response.statusText}`);
   }
 
-  const { data, error } = await supabase
-    .from('products')
-    .insert(dbProduct)
-    .select()
-    .single();
-  
-  if (error) throw new Error(error.message);
- return mapProduct(data);
+  const data = await response.json();
+  // Ensure the backend returns data structured similar to the frontend's expected Product type
+  // or use mapProduct if the backend returns snake_case rows. Our backend currently returns camelCase for id, but we send camelCase in req.body
+  return data as Product;
 };
 
 export const updateProduct = async (id: string, updates: Partial<Product>): Promise<Product | null> => {
-  const dbUpdates: any = {};
-  
-  if (updates.name !== undefined) dbUpdates.name = updates.name;
-  if (updates.description !== undefined) dbUpdates.description = updates.description;
-  if (updates.price !== undefined) dbUpdates.price = updates.price;
-  if (updates.category !== undefined) dbUpdates.category = updates.category;
-  if (updates.image !== undefined) dbUpdates.image = updates.image;
-  if (updates.origin !== undefined) dbUpdates.origin = updates.origin;
-  if (updates.abv !== undefined) dbUpdates.abv = updates.abv;
-  if (updates.year !== undefined) dbUpdates.year = updates.year;
-  if (updates.stock !== undefined) dbUpdates.stock = updates.stock;
-  if (updates.minStockLevel !== undefined) dbUpdates.min_stock_level = updates.minStockLevel;
-  
-  // Handle tags array
-  if (updates.tags && Array.isArray(updates.tags)) {
-    dbUpdates.tags = JSON.stringify(updates.tags);
+  const response = await fetch(`/api/products/${id}`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(updates)
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to update product: ${response.statusText}`);
   }
 
-  const { data, error } = await supabase
-    .from('products')
-    .update(dbUpdates)
-    .eq('id', id)
-    .select()
-    .single();
-  
-  if (error) throw new Error(error.message);
- return data ? mapProduct(data) : null;
+  const data = await response.json();
+  // Typically backend would return the updated product row
+  return data ? mapProduct(data) : null;
 };
 
 export const deleteProduct = async (id: string): Promise<void> => {
-  const { error } = await supabase
-    .from('products')
-    .delete()
-    .eq('id', id);
-  
-  if (error) throw new Error(error.message);
+  const response = await fetch(`/api/products/${id}`, {
+    method: 'DELETE',
+    credentials: 'include'
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to delete product: ${response.statusText}`);
+  }
 };
 
 export const getLowStockProducts = async (): Promise<Product[]> => {
@@ -112,19 +96,26 @@ export const getLowStockProducts = async (): Promise<Product[]> => {
     .from('products')
     .select('*')
     .lte('stock', 'min_stock_level');
-  
+
   if (error) throw new Error(error.message);
- return (data || []).map(mapProduct);
+  return (data || []).map(mapProduct);
 };
 
 export const updateProductInventory = async (id: string, stock: number): Promise<Product | null> => {
-  const { data, error } = await supabase
-    .from('products')
-    .update({ stock })
-    .eq('id', id)
-    .select()
-    .single();
-  
-  if (error) throw new Error(error.message);
- return data ? mapProduct(data) : null;
+  const response = await fetch(`/api/products/${id}/inventory`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ stock })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to update inventory: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data ? mapProduct(data) : null;
 };

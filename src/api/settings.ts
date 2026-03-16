@@ -1,5 +1,4 @@
-import { supabase } from '../supabaseClient';
-import bcrypt from 'bcryptjs';
+// Removed bcrypt import as it's handled on the backend now.
 import { AppSettings } from '../types';
 
 const mapSettings = (row: any): AppSettings => ({
@@ -12,56 +11,106 @@ const mapSettings = (row: any): AppSettings => ({
 });
 
 export const getSettings = async (): Promise<AppSettings | null> => {
-  const { data, error } = await supabase
-    .from('settings')
-    .select('*')
-    .limit(1)
-    .maybeSingle();
+  try {
+    const response = await fetch('/api/settings', {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
 
-  if (error) throw new Error(error.message);
-  return data ? mapSettings(data) : null;
+    if (!response.ok) {
+      throw new Error(`Failed to fetch settings: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data ? mapSettings(data) : null;
+  } catch (error) {
+    console.error('Error fetching settings:', error);
+    return null;
+  }
 };
 
 export const updateSettings = async (settings: Partial<AppSettings>): Promise<AppSettings | null> => {
-  const dbUpdates: any = {};
+  try {
+    // Build the payload
+    const payload: any = {};
+    if (settings.paypackApiKey !== undefined) payload.paypackApiKey = settings.paypackApiKey;
+    if (settings.paypackApiSecret !== undefined) payload.paypackApiSecret = settings.paypackApiSecret;
+    if (settings.storeName !== undefined) payload.storeName = settings.storeName;
+    if (settings.isMaintenanceMode !== undefined) payload.isMaintenanceMode = settings.isMaintenanceMode;
+    if (settings.emailNotifications !== undefined) payload.emailNotifications = settings.emailNotifications;
+    if (settings.adminPassword !== undefined) payload.adminPassword = settings.adminPassword;
 
-  if (settings.paypackApiKey !== undefined) dbUpdates.paypack_api_key = settings.paypackApiKey;
-  if (settings.paypackApiSecret !== undefined) dbUpdates.paypack_api_secret = settings.paypackApiSecret;
-  if (settings.storeName !== undefined) dbUpdates.store_name = settings.storeName;
-  if (settings.isMaintenanceMode !== undefined) dbUpdates.is_maintenance_mode = settings.isMaintenanceMode ? 1 : 0;
-  if (settings.emailNotifications !== undefined) dbUpdates.email_notifications = settings.emailNotifications ? 1 : 0;
+    const response = await fetch('/api/settings', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
 
-  if (settings.adminPassword !== undefined) {
-    const hashedAdminPassword = await bcrypt.hash(settings.adminPassword, 10);
-    dbUpdates.admin_password = hashedAdminPassword;
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Failed to update settings: ${response.statusText}`);
+    }
+
+    // Since our backend returns the new settings object directly, we don't need to remap
+    // but we can if we want to ensure format. For now, returning frontend formatted data.
+    return mapSettings(await response.json());
+
+  } catch (error) {
+    console.error('Error updating settings:', error);
+    throw error;
   }
-
-  const { data, error } = await supabase
-    .from('settings')
-    .update(dbUpdates)
-    .eq('id', 1)
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data ? mapSettings(data) : null;
 };
 
-export const verifyAdminPassword = async (password: string): Promise<boolean> => {
-  const { data, error } = await supabase
-    .from('settings')
-    .select('admin_password')
-    .limit(1)
-    .maybeSingle();
+export const verifyAdminPassword = async (password: string): Promise<{ success: boolean; message?: string }> => {
+  try {
+    const response = await fetch('/api/admin/login', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
 
-  if (error || !data || !data.admin_password) return false;
+    const data = await response.json();
 
-  // Important: If the existing DB password doesn't contain a bcrypt '$' signature, 
-  // we do a direct fallback check to prevent locking out the admin,
-  // then ideally they should update their password immediately.
-  if (!data.admin_password.startsWith('$2')) {
-    return data.admin_password === password;
+    if (!response.ok) {
+      return {
+        success: false,
+        message: data.error || (response.status === 429 ? 'Too many login attempts. Please try again in 15 minutes.' : 'Incorrect password')
+      };
+    }
+
+    return { success: data.success === true };
+  } catch (error) {
+    console.error('Login error:', error);
+    return { success: false, message: 'Connection error. Please check if the server is running.' };
   }
+};
 
-  return bcrypt.compare(password, data.admin_password);
+export const checkAdminAuth = async (): Promise<boolean> => {
+  try {
+    const response = await fetch('/api/admin/check-auth', {
+      method: 'GET',
+      credentials: 'include',
+    });
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+};
+
+export const logoutAdmin = async (): Promise<void> => {
+  try {
+    await fetch('/api/admin/logout', {
+      method: 'POST',
+      credentials: 'include',
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+  }
 };

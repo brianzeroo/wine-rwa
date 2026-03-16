@@ -18,7 +18,7 @@ import {
 import { getAllDiscountCodes, createDiscountCode, deleteDiscountCode } from '../api/discountCodes';
 import { getAllCustomers } from '../api/customers';
 import { getAnalyticsData } from '../api/analytics';
-import { verifyAdminPassword } from '../api/settings';
+import { verifyAdminPassword, checkAdminAuth, logoutAdmin } from '../api/settings';
 import { createProduct, updateProductInventory } from '../api/products';
 
 interface AdminProps {
@@ -42,13 +42,29 @@ export default function Admin({
   settings,
   onUpdateSettings
 }: AdminProps) {
+  useEffect(() => {
+    const checkSession = async () => {
+      if (!isAuthenticated) {
+        const isValid = await checkAdminAuth();
+        if (isValid) {
+          onLogin();
+        }
+      }
+    };
+    checkSession();
+  }, [isAuthenticated, onLogin]);
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loginPassword, setLoginPassword] = useState('');
   const [securityPin, setSecurityPin] = useState('');
   const [isPinVerified, setIsPinVerified] = useState(false);
+  const loginInProgressRef = React.useRef(false);
+  const loginButtonRef = React.useRef<HTMLButtonElement>(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(true);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [discountCodes, setDiscountCodes] = useState<DiscountCode[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
@@ -106,18 +122,37 @@ export default function Admin({
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      const isValid = await verifyAdminPassword(loginPassword);
+    // Synchronous guards to prevent any double-submission
+    if (isLoggingIn || loginInProgressRef.current || (window as any)._loginInProgress) return;
 
-      if (isValid) {
+    (window as any)._loginInProgress = true;
+    loginInProgressRef.current = true;
+    setIsLoggingIn(true);
+    setLoginError(null);
+    if (loginButtonRef.current) loginButtonRef.current.disabled = true;
+
+    try {
+      // Add a minimum delay of 1 second to ensure the "Logging in..." state is visible
+      // and to prevent rapid-fire requests from feeling "missed."
+      const [result] = await Promise.all([
+        verifyAdminPassword(loginPassword),
+        new Promise(resolve => setTimeout(resolve, 1000))
+      ]);
+
+      if (result.success) {
         onLogin();
         setShowLoginModal(false);
       } else {
-        alert('Incorrect password');
+        setLoginError(result.message || 'Incorrect password');
       }
     } catch (error) {
       console.error('Login error:', error);
-      alert('Error during login');
+      setLoginError('Error during login');
+    } finally {
+      setIsLoggingIn(false);
+      loginInProgressRef.current = false;
+      (window as any)._loginInProgress = false;
+      if (loginButtonRef.current) loginButtonRef.current.disabled = false;
     }
   };
 
@@ -330,11 +365,21 @@ export default function Admin({
                   placeholder="Enter admin password"
                 />
               </div>
+
+              {loginError && (
+                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm text-center">
+                  {loginError}
+                </div>
+              )}
+
               <button
                 type="submit"
-                className="w-full py-3 bg-gold text-dark font-bold rounded-lg hover:bg-gold/90 transition-colors"
+                ref={loginButtonRef}
+                disabled={isLoggingIn}
+                className={`w-full py-3 text-dark font-bold rounded-lg transition-colors ${isLoggingIn ? 'bg-gold/50 cursor-not-allowed' : 'bg-gold hover:bg-gold/90'
+                  }`}
               >
-                Login
+                {isLoggingIn ? 'Logging in...' : 'Login'}
               </button>
             </form>
           </motion.div>
@@ -349,12 +394,23 @@ export default function Admin({
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-serif text-white">Admin Dashboard</h1>
-          <button
-            onClick={() => setShowLoginModal(true)}
-            className="text-white/60 hover:text-white transition-colors"
-          >
-            <X size={24} />
-          </button>
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={async () => {
+                await logoutAdmin();
+                window.location.reload();
+              }}
+              className="px-4 py-2 bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors border border-red-500/20"
+            >
+              Logout
+            </button>
+            <button
+              onClick={() => setShowLoginModal(true)}
+              className="text-white/60 hover:text-white transition-colors"
+            >
+              <X size={24} />
+            </button>
+          </div>
         </div>
 
         {/* Navigation Tabs */}

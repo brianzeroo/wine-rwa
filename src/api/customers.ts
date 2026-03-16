@@ -15,11 +15,16 @@ const mapCustomer = (row: any): Customer => ({
 });
 
 export const getAllCustomers = async (): Promise<Customer[]> => {
-  const { data, error } = await supabase
-    .from('customers')
-    .select('*')
-    .order('name');
-  if (error) throw new Error(error.message);
+  const response = await fetch('/api/customers', {
+    method: 'GET',
+    credentials: 'include'
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch customers: ${response.statusText}`);
+  }
+
+  const data = await response.json();
   return (data || []).map(mapCustomer);
 };
 
