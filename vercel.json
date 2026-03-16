@@ -6,8 +6,44 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
+      "source": "/api/admin/(.*)",
+      "destination": "/api/admin"
+    },
+    {
+      "source": "/api/auth/(.*)",
+      "destination": "/api/auth"
+    },
+    {
+      "source": "/api/checkout/(.*)",
+      "destination": "/api/checkout"
+    },
+    {
+      "source": "/api/customers/(.*)",
+      "destination": "/api/customers"
+    },
+    {
+      "source": "/api/discounts/(.*)",
+      "destination": "/api/discounts"
+    },
+    {
+      "source": "/api/orders/(.*)",
+      "destination": "/api/orders"
+    },
+    {
+      "source": "/api/products/(.*)",
+      "destination": "/api/products"
+    },
+    {
+      "source": "/api/paypack/(.*)",
+      "destination": "/api/paypack"
+    },
+    {
+      "source": "/api/settings",
+      "destination": "/api/settings"
+    },
+    {
+      "source": "/api/analytics",
+      "destination": "/api/analytics"
     },
     {
       "source": "/((?!api/).*)",

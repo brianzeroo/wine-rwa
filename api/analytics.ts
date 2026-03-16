@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
+import jwt from 'jsonwebtoken';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_fallback_key_change_in_production';
+
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const mapProductToFrontend = (dbProduct: any) => {
@@ -13,9 +16,32 @@ const mapProductToFrontend = (dbProduct: any) => {
     };
 };
 
+/**
+ * Analytics API Handler
+ * Handles: GET
+ * Security: Admin auth required, Input validation, Method checking
+ */
 export default async function handler(req: any, res: any) {
     if (req.method !== 'GET') {
         return res.status(405).json({ error: 'Method not allowed' });
+    }
+
+    // Helper: Verify Admin Auth
+    const isAdmin = async () => {
+        const cookieHeader = req.headers.cookie;
+        const token = cookieHeader?.split(';').find((c: string) => c.trim().startsWith('admin_token='))?.split('=')[1];
+        if (!token) return false;
+        try {
+            const decoded = jwt.verify(token, JWT_SECRET) as any;
+            return decoded.role === 'admin';
+        } catch {
+            return false;
+        }
+    };
+
+    const authenticated = await isAdmin();
+    if (!authenticated) {
+        return res.status(401).json({ error: 'Unauthorized: Admin privileges required' });
     }
 
     try {
@@ -75,6 +101,7 @@ export default async function handler(req: any, res: any) {
             topProducts.push(...(fallbackData || []).map(mapProductToFrontend));
         }
 
+        // Mock chart data (as per original logic)
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
         const monthlyRevenue = months.map(month => ({
             month,
@@ -95,7 +122,7 @@ export default async function handler(req: any, res: any) {
             customerGrowth
         });
     } catch (error: any) {
-        console.error('Analytics error:', error.message);
+        console.error('[Error] Analytics exception:', error.message);
         return res.status(500).json({ error: 'Internal server error' });
     }
 }

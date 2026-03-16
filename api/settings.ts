@@ -8,55 +8,56 @@ const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_fallback_key_change_i
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-async function verifyAdminAuth(req: any) {
-    const cookieHeader = req.headers.cookie;
-    const token = cookieHeader
-        ?.split(';')
-        .find((c: string) => c.trim().startsWith('admin_token='))
-        ?.split('=')[1];
+/**
+ * Consolidated Settings API Handler
+ * Handles: GET, PUT
+ * Security: Admin auth required for BOTH operations, Password hashing
+ */
+export default async function handler(req: any, res: any) {
+    const { method, body } = req;
 
-    if (!token) return null;
+    // Helper: Verify Admin Auth
+    const verifyAdmin = async () => {
+        const cookieHeader = req.headers.cookie;
+        const token = cookieHeader?.split(';').find((c: string) => c.trim().startsWith('admin_token='))?.split('=')[1];
+        if (!token) return null;
+        try {
+            const decoded = jwt.verify(token, JWT_SECRET) as any;
+            return decoded.role === 'admin' ? decoded : null;
+        } catch {
+            return null;
+        }
+    };
+
+    const admin = await verifyAdmin();
+    if (!admin) {
+        return res.status(401).json({ error: 'Unauthorized: Admin privileges required' });
+    }
 
     try {
-        const decoded = jwt.verify(token, JWT_SECRET) as any;
-        return decoded.role === 'admin' ? decoded : null;
-    } catch (err) {
-        return null;
-    }
-}
-
-export default async function handler(req: any, res: any) {
-    if (req.method === 'GET') {
-        try {
+        if (method === 'GET') {
             const { data, error } = await supabase
                 .from('settings')
                 .select('*')
                 .limit(1)
                 .maybeSingle();
 
+            if (error) throw error;
             const settings = data || {};
+
             return res.json({
                 ...settings,
                 isMaintenanceMode: !!settings.is_maintenance_mode,
                 emailNotifications: !!settings.email_notifications,
-                adminPassword: settings.admin_password
+                adminPassword: settings.admin_password // Note: Still returning hash as per original, but restricted to admin
             });
-        } catch (error: any) {
-            console.error('Error fetching settings:', error.message);
-            return res.status(500).json({ error: 'Failed to fetch settings' });
-        }
-    }
-
-    if (req.method === 'PUT') {
-        const admin = await verifyAdminAuth(req);
-        if (!admin) {
-            return res.status(401).json({ error: 'Unauthorized: Admin privileges required' });
         }
 
-        try {
-            const settings = req.body;
+        if (method === 'PUT') {
+            const settings = body;
             let adminPasswordToStore = settings.adminPassword || 'admin123';
 
+            // Hash password if it's not already hashed
             if (adminPasswordToStore && !adminPasswordToStore.startsWith('$2')) {
                 const salt = await bcrypt.genSalt(10);
                 adminPasswordToStore = await bcrypt.hash(adminPasswordToStore, salt);
@@ -77,11 +78,13 @@ export default async function handler(req: any, res: any) {
                 .single();
 
             if (error) throw error;
+            console.log('[Security] Admin settings updated');
             return res.json(settings);
-        } catch (error: any) {
-            console.error('Error updating settings:', error.message);
-            return res.status(500).json({ error: 'Failed to update settings' });
         }
+
+    } catch (error: any) {
+        console.error('[Error] Settings operation failed:', error.message);
+        return res.status(500).json({ error: 'Internal server error' });
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
