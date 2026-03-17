@@ -13,7 +13,10 @@ import TrackOrder from './pages/TrackOrder';
 import UserDashboard from './pages/UserDashboard';
 import Terms from './pages/Terms';
 import { Product, CartItem, Order, AppSettings, Customer } from './types';
-import { supabase } from './supabaseClient';
+import { getAllProducts, createProduct, updateProduct, deleteProduct } from './api/products';
+import { getAllOrders, createOrder } from './api/orders';
+import { getCustomerByEmail } from './api/customers';
+import { checkAdminAuth, getSecuritySettings, updateSecuritySettings } from './api/settings';
 
 function AppContent() {
   const [products, setProducts] = React.useState<Product[]>([]);
@@ -30,15 +33,22 @@ function AppContent() {
     const savedCart = localStorage.getItem('cartItems');
     return savedCart ? JSON.parse(savedCart) : [];
   });
-
   const [isCartOpen, setIsCartOpen] = React.useState(false);
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = React.useState(false);
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [isAgeVerified, setIsAgeVerified] = React.useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = React.useState(false);
-  const [currentUser, setCurrentUser] = React.useState<{ id: string; email: string; name: string } | null>(null);
+  const [currentUser, setCurrentUser] = React.useState<any>(null);
   const [customerData, setCustomerData] = React.useState<Customer | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isAgeVerified, setIsAgeVerified] = React.useState(() => {
+    return localStorage.getItem('ageVerified') === 'true';
+  });
+
   const location = useLocation();
+
+  React.useEffect(() => {
+    localStorage.setItem('ageVerified', isAgeVerified.toString());
+  }, [isAgeVerified]);
+
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = React.useState(false);
 
   // Check age verification on mount
   React.useEffect(() => {
@@ -59,23 +69,11 @@ function AppContent() {
   // Fetch customer data when user logs in
   React.useEffect(() => {
     if (currentUser) {
-      supabase
-        .from('customers')
-        .select('*')
-        .ilike('email', currentUser.email)
-        .maybeSingle()
-        .then(({ data, error }) => {
-          if (error) {
-            console.error('Error fetching customer:', error.message);
-            return;
-          }
-          if (data) setCustomerData({
-            id: data.id, name: data.name, email: data.email,
-            phone: data.phone, address: data.address || '',
-            joinDate: data.join_date, totalSpent: Number(data.total_spent || 0),
-            orderCount: Number(data.order_count || 0), loyaltyPoints: Number(data.loyalty_points || 0)
-          });
-        });
+      getCustomerByEmail(currentUser.email)
+        .then(data => {
+          if (data) setCustomerData(data);
+        })
+        .catch(err => console.error('Error fetching customer:', err));
     } else {
       setCustomerData(null);
     }
@@ -86,45 +84,21 @@ function AppContent() {
     localStorage.setItem('cartItems', JSON.stringify(cartItems));
   }, [cartItems]);
 
-  // Fetch initial data from Supabase
+  // Fetch initial data from API
   React.useEffect(() => {
     const fetchData = async () => {
       try {
-        const [productsRes, ordersRes, settingsRes] = await Promise.all([
-          supabase.from('products').select('*').order('name'),
-          supabase.from('orders').select('*').order('date', { ascending: false }),
-          supabase.from('settings').select('*').limit(1).maybeSingle()
+        const [productsData, ordersData, settingsData, authStatus] = await Promise.all([
+          getAllProducts(),
+          getAllOrders(),
+          getSecuritySettings(),
+          checkAdminAuth()
         ]);
 
-        if (productsRes.data) {
-          setProducts(productsRes.data.map((p: any) => ({
-            ...p,
-            minStockLevel: p.min_stock_level,
-            tags: Array.isArray(p.tags) ? p.tags : (p.tags ? JSON.parse(p.tags) : [])
-          })));
-        }
-        if (ordersRes.data) {
-          setOrders(ordersRes.data.map((o: any) => ({
-            id: o.id, customerId: o.customer_id, customerName: o.customer_name,
-            customerPhone: o.customer_phone, customerEmail: o.customer_email,
-            items: Array.isArray(o.items) ? o.items : JSON.parse(o.items),
-            total: Number(o.total), discountAmount: Number(o.discount_amount || 0),
-            finalTotal: Number(o.final_total), status: o.status,
-            paymentMethod: o.payment_method, shippingAddress: o.shipping_address,
-            notes: o.notes, date: o.date
-          })));
-        }
-        if (settingsRes.data) {
-          const s = settingsRes.data;
-          setSettings({
-            paypackApiKey: s.paypack_api_key || '',
-            paypackApiSecret: s.paypack_api_secret || '',
-            storeName: s.store_name || 'Wine RWA',
-            isMaintenanceMode: Boolean(s.is_maintenance_mode),
-            emailNotifications: Boolean(s.email_notifications),
-            adminPassword: s.admin_password || 'admin123'
-          });
-        }
+        if (productsData) setProducts(productsData);
+        if (ordersData) setOrders(ordersData);
+        if (settingsData) setSettings(settingsData);
+        setIsAdminAuthenticated(authStatus);
       } catch (error) {
         console.error('Failed to fetch data:', error);
       } finally {
@@ -167,40 +141,14 @@ function AppContent() {
   };
 
   const handleCreateOrder = async (orderData: Omit<Order, 'id' | 'date' | 'status'>) => {
-    const newOrder: Order = {
-      ...orderData,
-      id: `ORD-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-      date: new Date().toISOString(),
-      status: 'Pending'
-    };
-
     try {
-      const { error } = await supabase.from('orders').insert({
-        id: newOrder.id,
-        customer_id: newOrder.customerId || null,
-        customer_name: newOrder.customerName,
-        customer_phone: newOrder.customerPhone,
-        customer_email: newOrder.customerEmail,
-        items: JSON.stringify(newOrder.items),
-        total: newOrder.total,
-        discount_amount: newOrder.discountAmount || 0,
-        final_total: newOrder.finalTotal,
-        status: newOrder.status,
-        payment_method: newOrder.paymentMethod,
-        shipping_address: newOrder.shippingAddress || null,
-        notes: newOrder.notes || null,
-        date: newOrder.date
+      const created = await createOrder({
+        ...orderData,
+        date: new Date().toISOString(),
+        status: 'Pending'
       });
-
-      if (!error) {
-        setOrders(prev => [newOrder, ...prev]);
-        handleClearCart();
-        if (settings.emailNotifications && orderData.customerEmail) {
-          console.log('📧 Sending order confirmation email to:', orderData.customerEmail);
-        }
-      } else {
-        console.error('Failed to create order:', error.message);
-      }
+      setOrders(prev => [created, ...prev]);
+      handleClearCart();
     } catch (error) {
       console.error('Failed to create order:', error);
     }
@@ -208,16 +156,8 @@ function AppContent() {
 
   const handleUpdateSettings = async (newSettings: AppSettings) => {
     try {
-      const { error } = await supabase.from('settings').update({
-        paypack_api_key: newSettings.paypackApiKey || '',
-        paypack_api_secret: newSettings.paypackApiSecret || '',
-        store_name: newSettings.storeName || 'Wine RWA',
-        is_maintenance_mode: newSettings.isMaintenanceMode,
-        email_notifications: newSettings.emailNotifications,
-        admin_password: newSettings.adminPassword || 'admin123'
-      }).eq('id', 1);
-
-      if (!error) setSettings(newSettings);
+      const updated = await updateSecuritySettings(newSettings);
+      if (updated) setSettings(updated);
     } catch (error) {
       console.error('Failed to update settings:', error);
     }
@@ -225,36 +165,12 @@ function AppContent() {
 
   const handleSaveProduct = async (product: Product, isNew: boolean) => {
     try {
-      const dbProduct = {
-        id: product.id,
-        name: product.name,
-        description: product.description,
-        price: product.price,
-        category: product.category,
-        image: product.image,
-        origin: product.origin,
-        abv: product.abv,
-        year: product.year || null,
-        stock: product.stock,
-        min_stock_level: product.minStockLevel || 0,
-        tags: product.tags || []
-      };
-
-      let error;
       if (isNew) {
-        ({ error } = await supabase.from('products').insert(dbProduct));
+        const created = await createProduct(product);
+        setProducts(prev => [...prev, created]);
       } else {
-        ({ error } = await supabase.from('products').update(dbProduct).eq('id', product.id));
-      }
-
-      if (!error) {
-        if (isNew) {
-          setProducts(prev => [...prev, product]);
-        } else {
-          setProducts(prev => prev.map(p => p.id === product.id ? product : p));
-        }
-      } else {
-        console.error('Failed to save product:', error.message);
+        const updated = await updateProduct(product.id, product);
+        if (updated) setProducts(prev => prev.map(p => p.id === product.id ? updated : p));
       }
     } catch (error) {
       console.error('Failed to save product:', error);
@@ -263,10 +179,8 @@ function AppContent() {
 
   const handleDeleteProduct = async (id: string) => {
     try {
-      const { error } = await supabase.from('products').delete().eq('id', id);
-      if (!error) {
-        setProducts(prev => prev.filter(p => p.id !== id));
-      }
+      await deleteProduct(id);
+      setProducts(prev => prev.filter(p => p.id !== id));
     } catch (error) {
       console.error('Failed to delete product:', error);
     }
@@ -331,7 +245,7 @@ function AppContent() {
           <Route path="/" element={<StoreEnhanced products={products} onAddToCart={handleAddToCart} />} />
           <Route path="/wine" element={<StoreEnhanced products={products} onAddToCart={handleAddToCart} />} />
           <Route path="/liquor" element={<StoreEnhanced products={products} onAddToCart={handleAddToCart} />} />
-          <Route path="/checkout" element={<Checkout items={cartItems} onClearCart={handleClearCart} onCreateOrder={handleCreateOrder} currentUser={currentUser} />} />
+          <Route path="/checkout" element={<Checkout items={cartItems} onClearCart={handleClearCart} onCreateOrder={handleCreateOrder} currentUser={currentUser} onLoginPrompt={() => setIsAuthModalOpen(true)} />} />
           <Route path="/track-order" element={<TrackOrder orders={orders} />} />
           <Route path="/terms" element={<Terms />} />
           <Route

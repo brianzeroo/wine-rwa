@@ -25,88 +25,94 @@ export const getAllCustomers = async (): Promise<Customer[]> => {
   }
 
   const data = await response.json();
-  return (data || []).map(mapCustomer);
+  return data;
 };
 
 export const getCustomerById = async (id: string): Promise<Customer | null> => {
-  const { data, error } = await supabase
-    .from('customers')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? mapCustomer(data) : null;
+  const response = await fetch(`/api/customers/${id}`, {
+    method: 'GET',
+    credentials: 'include'
+  });
+
+  if (!response.ok) {
+    if (response.status === 404) return null;
+    throw new Error(`Failed to fetch customer: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data;
 };
 
 export const getCustomerByEmail = async (email: string): Promise<Customer | null> => {
-  const { data, error } = await supabase
-    .from('customers')
-    .select('*')
-    .ilike('email', email)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? mapCustomer(data) : null;
+  const response = await fetch(`/api/customers/email/${email}`, {
+    method: 'GET',
+    credentials: 'include'
+  });
+
+  if (!response.ok) {
+    if (response.status === 404) return null;
+    throw new Error(`Failed to fetch customer by email: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data;
 };
 
 export const createCustomer = async (
   customer: Omit<Customer, 'id' | 'joinDate' | 'totalSpent' | 'orderCount'>
 ): Promise<Customer> => {
-  const newCustomer = {
-    id: `cust${Date.now()}`,
-    name: customer.name,
-    email: customer.email,
-    phone: customer.phone,
-    address: customer.address,
-    join_date: new Date().toISOString().split('T')[0],
-    total_spent: 0,
-    order_count: 0,
-    loyalty_points: customer.loyaltyPoints || 0,
-  };
-  const { data, error } = await supabase
-    .from('customers')
-    .insert(newCustomer)
-    .select()
-    .single();
-  if (error) throw new Error(error.message);
-  return mapCustomer(data);
+  const response = await fetch('/api/customers', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(customer)
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to create customer: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data;
 };
 
 export const updateCustomer = async (id: string, updates: Partial<Customer>): Promise<Customer | null> => {
-  const dbUpdates: any = {};
-  if (updates.name !== undefined) dbUpdates.name = updates.name;
-  if (updates.email !== undefined) dbUpdates.email = updates.email;
-  if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
-  if (updates.address !== undefined) dbUpdates.address = updates.address;
-  if (updates.totalSpent !== undefined) dbUpdates.total_spent = updates.totalSpent;
-  if (updates.orderCount !== undefined) dbUpdates.order_count = updates.orderCount;
-  if (updates.loyaltyPoints !== undefined) dbUpdates.loyalty_points = updates.loyaltyPoints;
+  const response = await fetch(`/api/customers/${id}`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(updates)
+  });
 
-  const { data, error } = await supabase
-    .from('customers')
-    .update(dbUpdates)
-    .eq('id', id)
-    .select()
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? mapCustomer(data) : null;
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to update customer: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data;
 };
 
 export const addCustomerLoyaltyPoints = async (id: string, points: number): Promise<Customer | null> => {
-  // First get current points, then add
-  const { data: existing } = await supabase
-    .from('customers')
-    .select('loyalty_points')
-    .eq('id', id)
-    .maybeSingle();
-  if (!existing) return null;
+  const response = await fetch(`/api/customers/${id}/add-points`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ points })
+  });
 
-  const newPoints = (existing.loyalty_points || 0) + points;
-  const { data, error } = await supabase
-    .from('customers')
-    .update({ loyalty_points: newPoints })
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) throw new Error(error.message);
-  return mapCustomer(data);
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to add loyalty points: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data;
 };

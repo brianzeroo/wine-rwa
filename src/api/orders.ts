@@ -1,7 +1,7 @@
 import { supabase } from '../supabaseClient';
 import { Order } from '../types';
 
-const mapOrder= (row: any): Order => ({
+const mapOrder = (row: any): Order => ({
   id: row.id,
   customerId: row.customer_id,
   customerName: row.customer_name,
@@ -19,66 +19,69 @@ const mapOrder= (row: any): Order => ({
 });
 
 export const getAllOrders = async (limit?: number): Promise<Order[]> => {
-  let query = supabase
-    .from('orders')
-    .select('*')
-    .order('date', { ascending: false });
+  const url = limit ? `/api/orders?limit=${limit}` : '/api/orders';
+  const response = await fetch(url, {
+    method: 'GET',
+    credentials: 'include'
+  });
 
-  if (limit) {
-    query = query.limit(limit);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch orders: ${response.statusText}`);
   }
 
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
- return (data || []).map(mapOrder);
+  const data = await response.json();
+  return data;
 };
 
 export const getOrderById = async (id: string): Promise<Order | null> => {
-  const { data, error } = await supabase
-    .from('orders')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
-  
-  if (error) throw new Error(error.message);
- return data ? mapOrder(data) : null;
+  const response = await fetch(`/api/orders/${id}`, {
+    method: 'GET',
+    credentials: 'include'
+  });
+
+  if (!response.ok) {
+    if (response.status === 404) return null;
+    throw new Error(`Failed to fetch order: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data;
 };
 
 export const createOrder = async (order: Omit<Order, 'id'>): Promise<Order> => {
-  const dbOrder = {
-  id: `order${Date.now()}`,
-   customer_id: order.customerId || null,
-   customer_name: order.customerName,
-   customer_phone: order.customerPhone,
-   customer_email: order.customerEmail,
-    items: JSON.stringify(order.items),
-    total: order.total,
-    discount_amount: order.discountAmount || 0,
-    final_total: order.finalTotal,
-    status: order.status || 'Pending',
-    payment_method: order.paymentMethod,
-    shipping_address: order.shippingAddress || null,
-    notes: order.notes || null
-  };
+  const response = await fetch('/api/orders', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(order)
+  });
 
-  const { data, error } = await supabase
-    .from('orders')
-    .insert(dbOrder)
-    .select()
-    .single();
-  
-  if (error) throw new Error(error.message);
- return mapOrder(data);
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to create order: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data;
 };
 
 export const updateOrderStatus = async (id: string, status: string): Promise<Order | null> => {
-  const { data, error } = await supabase
-    .from('orders')
-    .update({ status })
-    .eq('id', id)
-    .select()
-    .single();
-  
-  if (error) throw new Error(error.message);
- return data ? mapOrder(data) : null;
+  const response = await fetch(`/api/orders/${id}`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ status })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to update order status: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data;
 };

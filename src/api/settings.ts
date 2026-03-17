@@ -10,7 +10,7 @@ const mapSettings = (row: any): AppSettings => ({
   adminPassword: row.admin_password
 });
 
-export const getSettings = async (): Promise<AppSettings | null> => {
+export const getSecuritySettings = async (): Promise<AppSettings | null> => {
   try {
     const response = await fetch('/api/settings', {
       method: 'GET',
@@ -32,7 +32,9 @@ export const getSettings = async (): Promise<AppSettings | null> => {
   }
 };
 
-export const updateSettings = async (settings: Partial<AppSettings>): Promise<AppSettings | null> => {
+export const getSettings = getSecuritySettings;
+
+export const updateSecuritySettings = async (settings: Partial<AppSettings>): Promise<AppSettings | null> => {
   try {
     // Build the payload
     const payload: any = {};
@@ -57,8 +59,6 @@ export const updateSettings = async (settings: Partial<AppSettings>): Promise<Ap
       throw new Error(errorData.error || `Failed to update settings: ${response.statusText}`);
     }
 
-    // Since our backend returns the new settings object directly, we don't need to remap
-    // but we can if we want to ensure format. For now, returning frontend formatted data.
     return mapSettings(await response.json());
 
   } catch (error) {
@@ -66,6 +66,8 @@ export const updateSettings = async (settings: Partial<AppSettings>): Promise<Ap
     throw error;
   }
 };
+
+export const updateSettings = updateSecuritySettings;
 
 export const verifyAdminPassword = async (password: string): Promise<{ success: boolean; message?: string }> => {
   try {
@@ -97,6 +99,9 @@ export const checkAdminAuth = async (): Promise<boolean> => {
     const response = await fetch('/api/admin/check-auth', {
       method: 'GET',
       credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json'
+      }
     });
     return response.ok;
   } catch (error) {

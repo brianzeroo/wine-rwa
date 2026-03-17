@@ -18,24 +18,32 @@ const mapProduct = (row: any): Product => ({
 });
 
 export const getAllProducts = async (): Promise<Product[]> => {
-  const { data, error } = await supabase
-    .from('products')
-    .select('*')
-    .order('name');
+  const response = await fetch('/api/products', {
+    method: 'GET',
+    credentials: 'include'
+  });
 
-  if (error) throw new Error(error.message);
-  return (data || []).map(mapProduct);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch products: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data; // Backend now returns mapped Product[]
 };
 
 export const getProductById = async (id: string): Promise<Product | null> => {
-  const { data, error } = await supabase
-    .from('products')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
+  const response = await fetch(`/api/products/${id}`, {
+    method: 'GET',
+    credentials: 'include'
+  });
 
-  if (error) throw new Error(error.message);
-  return data ? mapProduct(data) : null;
+  if (!response.ok) {
+    if (response.status === 404) return null;
+    throw new Error(`Failed to fetch product: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data;
 };
 
 export const createProduct = async (product: Omit<Product, 'id'>): Promise<Product> => {
@@ -54,9 +62,7 @@ export const createProduct = async (product: Omit<Product, 'id'>): Promise<Produ
   }
 
   const data = await response.json();
-  // Ensure the backend returns data structured similar to the frontend's expected Product type
-  // or use mapProduct if the backend returns snake_case rows. Our backend currently returns camelCase for id, but we send camelCase in req.body
-  return data as Product;
+  return data;
 };
 
 export const updateProduct = async (id: string, updates: Partial<Product>): Promise<Product | null> => {
@@ -75,8 +81,7 @@ export const updateProduct = async (id: string, updates: Partial<Product>): Prom
   }
 
   const data = await response.json();
-  // Typically backend would return the updated product row
-  return data ? mapProduct(data) : null;
+  return data;
 };
 
 export const deleteProduct = async (id: string): Promise<void> => {
@@ -92,13 +97,17 @@ export const deleteProduct = async (id: string): Promise<void> => {
 };
 
 export const getLowStockProducts = async (): Promise<Product[]> => {
-  const { data, error } = await supabase
-    .from('products')
-    .select('*')
-    .lte('stock', 'min_stock_level');
+  const response = await fetch('/api/products/low-stock', {
+    method: 'GET',
+    credentials: 'include'
+  });
 
-  if (error) throw new Error(error.message);
-  return (data || []).map(mapProduct);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch low stock products: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data;
 };
 
 export const updateProductInventory = async (id: string, stock: number): Promise<Product | null> => {

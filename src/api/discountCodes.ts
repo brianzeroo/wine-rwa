@@ -15,23 +15,32 @@ const mapDiscount = (row: any): DiscountCode => ({
 });
 
 export const getAllDiscountCodes = async (): Promise<DiscountCode[]> => {
-  const { data, error } = await supabase
-    .from('discount_codes')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data || []).map(mapDiscount);
+  const response = await fetch('/api/discounts', {
+    method: 'GET',
+    credentials: 'include'
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch discount codes: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data;
 };
 
 export const getDiscountCodeByCode = async (code: string): Promise<DiscountCode | null> => {
-  const { data, error } = await supabase
-    .from('discount_codes')
-    .select('*')
-    .ilike('code', code)
-    .eq('is_active', true)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? mapDiscount(data) : null;
+  const response = await fetch(`/api/discounts/${code}`, {
+    method: 'GET',
+    credentials: 'include'
+  });
+
+  if (!response.ok) {
+    if (response.status === 404) return null;
+    throw new Error(`Failed to fetch discount code: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data;
 };
 
 export const createDiscountCode = async (

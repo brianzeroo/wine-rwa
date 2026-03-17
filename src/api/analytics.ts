@@ -1,4 +1,3 @@
-import { supabase } from '../supabaseClient';
 import { AnalyticsData, Order } from '../types';
 
 const mapOrder = (o: any): Order => ({
@@ -19,30 +18,29 @@ const mapOrder = (o: any): Order => ({
 });
 
 export const getAnalyticsData = async (): Promise<AnalyticsData> => {
-  const { data: orders } = await supabase.from('orders').select('*');
-  const { data: products } = await supabase.from('products').select('*');
+  const response = await fetch('/api/analytics', {
+    method: 'GET',
+    credentials: 'include'
+  });
 
-  const allOrders = (orders || []).map(mapOrder);
-  const totalSales = allOrders.reduce((sum, o) => sum + o.finalTotal, 0);
-  const totalOrders = allOrders.length;
-  const averageOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
+  if (!response.ok) {
+    throw new Error(`Failed to fetch analytics: ${response.statusText}`);
+  }
 
-  return {
-    totalSales,
-    totalOrders,
-    averageOrderValue,
-    topProducts: (products || []).slice(0, 5),
-    monthlyRevenue: [],
-    customerGrowth: []
-  };
+  const data = await response.json();
+  return data;
 };
 
 export const getRecentOrders = async (): Promise<Order[]> => {
-  const { data, error } = await supabase
-    .from('orders')
-    .select('*')
-    .order('date', { ascending: false })
-    .limit(5);
-  if (error) throw new Error(error.message);
-  return (data || []).map(mapOrder);
+  const response = await fetch('/api/orders?limit=5', {
+    method: 'GET',
+    credentials: 'include'
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch recent orders: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data;
 };
